@@ -65,7 +65,6 @@ import com.thallyace.terminal.model.BellMode
 import com.thallyace.terminal.model.ExtraKeysMode
 import com.thallyace.terminal.model.RootAccessState
 import com.thallyace.terminal.model.SessionStatus
-import com.thallyace.terminal.model.TerminalSettings
 import com.thallyace.terminal.model.TerminalSettingsRepository
 import com.thallyace.terminal.model.TerminalTheme
 import com.thallyace.terminal.model.TerminalThemes
@@ -330,19 +329,9 @@ fun TerminalScreen(
                 settingsRepo.save(next)
                 service.updateScrollbackLimit(next.scrollbackLines)
             },
-            onResetDefaults = {
-                val defaults = TerminalSettings()
-                settings = defaults
-                settingsRepo.save(defaults)
-                service.updateScrollbackLimit(defaults.scrollbackLines)
-            },
             onSendSigint = { service.sendSigint() },
             onRequestRoot = {
                 service.requestRootShell()
-                settingsOpen = false
-            },
-            onRestartService = {
-                service.restartSession()
                 settingsOpen = false
             }
         )

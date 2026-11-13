@@ -1,14 +1,13 @@
 package com.thallyace.terminal.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,10 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -38,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,8 +46,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.thallyace.terminal.model.BackspaceMode
-import com.thallyace.terminal.model.BellMode
 import com.thallyace.terminal.model.ComputedFontMetrics
 import com.thallyace.terminal.model.CursorStyle
 import com.thallyace.terminal.model.ExtraKeysMode
@@ -62,6 +59,12 @@ import com.thallyace.terminal.model.TerminalThemes
 import kotlinx.coroutines.delay
 import kotlin.math.round
 
+private enum class SettingsSection {
+    APPEARANCE,
+    FONT,
+    SESSION
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(
@@ -71,12 +74,11 @@ fun SettingsSheet(
     session: SessionInfo,
     onDismiss: () -> Unit,
     onUpdateSettings: (TerminalSettings) -> Unit,
-    onResetDefaults: () -> Unit,
     onSendSigint: () -> Unit,
-    onRequestRoot: () -> Unit,
-    onRestartService: () -> Unit
+    onRequestRoot: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var expandedSection by remember { mutableStateOf<SettingsSection?>(null) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(Unit) {
@@ -139,354 +141,358 @@ fun SettingsSheet(
                     .fillMaxWidth()
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. Monospace & Auto-Scale
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Monospace & Auto-Scale",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = theme.chromeMutedColor
-                        )
-                        Text(
-                            text = "${fontMetrics.fontSizeSp}sp · ${fontMetrics.deviceProfile}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = theme.accentColor
-                        )
+                // 1. Appearance & Themes
+                ExpandableSettingsSection(
+                    title = "Appearance & Themes",
+                    summary = "${theme.name} · ${settings.cursorStyle.label}",
+                    expanded = expandedSection == SettingsSection.APPEARANCE,
+                    theme = theme,
+                    onToggle = {
+                        expandedSection = if (expandedSection == SettingsSection.APPEARANCE) null else SettingsSection.APPEARANCE
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text(
-                                text = "Auto-adjust font per device",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "Adapts readable monospace size from device width and DPI",
-                                fontSize = 12.sp,
-                                color = theme.chromeMutedColor
-                            )
-                        }
-                        Switch(
-                            checked = settings.autoFontSize,
-                            onCheckedChange = {
-                                onUpdateSettings(settings.copy(autoFontSize = it))
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = theme.accentColor
-                            )
-                        )
-                    }
-
-                    if (settings.autoFontSize) {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Auto scale offset", fontSize = 12.sp, color = theme.chromeMutedColor)
-                                val sign = if (settings.autoFontOffsetSp > 0f) "+" else ""
-                                Text(
-                                    text = "$sign${settings.autoFontOffsetSp}sp",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Slider(
-                                value = settings.autoFontOffsetSp,
-                                onValueChange = { raw ->
-                                    val snapped = round(raw * 2f) / 2f
-                                    onUpdateSettings(settings.copy(autoFontOffsetSp = snapped))
-                                },
-                                valueRange = -3f..6f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = theme.accentColor,
-                                    activeTrackColor = theme.accentColor
-                                )
-                            )
-                        }
-                    } else {
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Manual font size", fontSize = 12.sp, color = theme.chromeMutedColor)
-                                Text(
-                                    text = "${settings.manualFontSizeSp}sp",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            Slider(
-                                value = settings.manualFontSizeSp,
-                                onValueChange = { raw ->
-                                    val snapped = round(raw * 2f) / 2f
-                                    onUpdateSettings(settings.copy(manualFontSizeSp = snapped))
-                                },
-                                valueRange = 10f..26f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = theme.accentColor,
-                                    activeTrackColor = theme.accentColor
-                                )
-                            )
-                        }
-                    }
-
-                    Text("Monospace typeface", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        MonoTypeface.entries.forEach { face ->
-                            val selected = settings.typeface == face
-                            OptionRow(
-                                label = face.label,
-                                trailing = "0O1lI",
-                                selected = selected,
-                                theme = theme,
-                                onClick = { onUpdateSettings(settings.copy(typeface = face)) }
-                            )
-                        }
-                    }
-
-                    Text("Line height", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = listOf(1.15f to "1.15", 1.25f to "1.25", 1.4f to "1.4"),
-                        selected = settings.lineHeightMultiplier,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(lineHeightMultiplier = it)) }
-                    )
-
-                    SwitchRow(
-                        title = "Bright bold colors",
-                        checked = settings.boldBright,
-                        theme = theme,
-                        onCheckedChange = { onUpdateSettings(settings.copy(boldBright = it)) }
-                    )
-                }
-
-                HorizontalDivider(color = theme.chromeBorderColor)
-
-                // 2. Color Scheme & Cursor
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Color Scheme & Cursor",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = theme.chromeMutedColor
-                    )
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TerminalThemes.all.forEach { item ->
-                            val selected = settings.themeId == item.id
-                            Surface(
-                                onClick = { onUpdateSettings(settings.copy(themeId = item.id)) },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (selected) theme.chromeBgColor else Color.Transparent,
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (selected) theme.accentColor else theme.chromeBorderColor
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 44.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TerminalThemes.all.forEach { item ->
+                                val selected = settings.themeId == item.id
+                                Surface(
+                                    onClick = { onUpdateSettings(settings.copy(themeId = item.id)) },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (selected) theme.chromeBgColor else Color.Transparent,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (selected) theme.accentColor else theme.chromeBorderColor
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 42.dp)
                                 ) {
-                                    Text(item.name, fontSize = 14.sp)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .background(Color(item.terminalBg), RoundedCornerShape(3.dp))
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .background(Color(item.terminalFg), RoundedCornerShape(3.dp))
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .background(item.accentColor, RoundedCornerShape(3.dp))
-                                        )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(item.name, fontSize = 13.sp)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .background(Color(item.terminalBg), RoundedCornerShape(3.dp))
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .background(Color(item.terminalFg), RoundedCornerShape(3.dp))
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .background(item.accentColor, RoundedCornerShape(3.dp))
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        Text("Cursor style", fontSize = 12.sp, color = theme.chromeMutedColor)
+                        SegmentedRow(
+                            options = CursorStyle.entries.map { it to it.label },
+                            selected = settings.cursorStyle,
+                            theme = theme,
+                            onSelect = { onUpdateSettings(settings.copy(cursorStyle = it)) }
+                        )
+
+                        SwitchRow(
+                            title = "Cursor blink",
+                            checked = settings.cursorBlink,
+                            theme = theme,
+                            onCheckedChange = { onUpdateSettings(settings.copy(cursorBlink = it)) }
+                        )
+
+                        SwitchRow(
+                            title = "Bright bold colors",
+                            checked = settings.boldBright,
+                            theme = theme,
+                            onCheckedChange = { onUpdateSettings(settings.copy(boldBright = it)) }
+                        )
+
+                        Text("Extra keys bar", fontSize = 12.sp, color = theme.chromeMutedColor)
+                        SegmentedRow(
+                            options = ExtraKeysMode.entries.map { it to it.label },
+                            selected = settings.extraKeysMode,
+                            theme = theme,
+                            onSelect = { onUpdateSettings(settings.copy(extraKeysMode = it)) }
+                        )
                     }
-
-                    Text("Cursor style", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = CursorStyle.entries.map { it to it.label },
-                        selected = settings.cursorStyle,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(cursorStyle = it)) }
-                    )
-
-                    SwitchRow(
-                        title = "Cursor blink",
-                        checked = settings.cursorBlink,
-                        theme = theme,
-                        onCheckedChange = { onUpdateSettings(settings.copy(cursorBlink = it)) }
-                    )
                 }
 
-                HorizontalDivider(color = theme.chromeBorderColor)
-
-                // 3. Input & Buffer
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Input & Buffer",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = theme.chromeMutedColor
-                    )
-
-                    Text("Extra keys toolbar", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = ExtraKeysMode.entries.map { it to it.label },
-                        selected = settings.extraKeysMode,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(extraKeysMode = it)) }
-                    )
-
-                    Text("Backspace key sequence", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = BackspaceMode.entries.map { it to it.label },
-                        selected = settings.backspaceMode,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(backspaceMode = it)) }
-                    )
-
-                    Text("Terminal bell", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = BellMode.entries.map { it to it.label },
-                        selected = settings.bellMode,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(bellMode = it)) }
-                    )
-
-                    Text("Scrollback buffer lines", fontSize = 12.sp, color = theme.chromeMutedColor)
-                    SegmentedRow(
-                        options = listOf(1000, 3000, 5000, 10000).map { it to it.toString() },
-                        selected = settings.scrollbackLines,
-                        theme = theme,
-                        onSelect = { onUpdateSettings(settings.copy(scrollbackLines = it)) }
-                    )
-                }
-
-                HorizontalDivider(color = theme.chromeBorderColor)
-
-                // 4. Persistent Service Info & Controls
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Persistent Terminal Service",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = theme.chromeMutedColor
-                    )
-
-                    InfoRow("Package", "com.thallyace.terminal", theme)
-                    InfoRow(
-                        "Service Status",
-                        when (session.status) {
-                            SessionStatus.RUNNING -> "Active until exit"
-                            SessionStatus.EXITED -> "Exited (${session.exitCode ?: 0})"
-                            SessionStatus.CONNECTING -> "Starting"
-                        },
-                        theme
-                    )
-                    InfoRow(
-                        "Privilege / Root",
-                        "${session.rootState.label} · uid=${if (session.uid >= 0) session.uid else "—"}",
-                        theme
-                    )
-                    InfoRow("su Binary", session.suPath ?: "Not found", theme)
-                    InfoRow("Shell / PID", "${session.shellPath} · ${if (session.pid > 0) session.pid else "—"}", theme)
-                    InfoRow("Grid Size", "${session.cols} × ${session.rows}", theme)
-                    InfoRow("Uptime", formatUptime(session.startedAtMillis, session.endedAtMillis ?: nowMillis), theme)
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    OutlinedButton(
-                        onClick = onRequestRoot,
-                        enabled = session.rootState != RootAccessState.ROOT_GRANTED &&
-                            session.rootState != RootAccessState.CHECKING,
-                        border = BorderStroke(1.dp, theme.chromeBorderColor),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 44.dp)
-                    ) {
-                        val rootBtnLabel = when (session.rootState) {
-                            RootAccessState.ROOT_GRANTED -> "Root shell active (uid=0)"
-                            RootAccessState.CHECKING -> "Checking su access..."
-                            RootAccessState.USER_NO_SU -> "Request Root (su) — no binary found"
-                            RootAccessState.ROOT_DENIED -> "Retry Root Elevation (su)"
-                            RootAccessState.USER_SU_AVAILABLE -> "Elevate to Root Shell (su)"
+                // 2. Font Configuration
+                ExpandableSettingsSection(
+                    title = "Font Configuration",
+                    summary = "${fontMetrics.fontSizeSp}sp · ${settings.typeface.label}",
+                    expanded = expandedSection == SettingsSection.FONT,
+                    theme = theme,
+                    onToggle = {
+                        expandedSection = if (expandedSection == SettingsSection.FONT) null else SettingsSection.FONT
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text(
+                                    text = "Auto-adjust font per device",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "${fontMetrics.deviceProfile} (${fontMetrics.fontSizeSp}sp)",
+                                    fontSize = 12.sp,
+                                    color = theme.chromeMutedColor
+                                )
+                            }
+                            Switch(
+                                checked = settings.autoFontSize,
+                                onCheckedChange = {
+                                    onUpdateSettings(settings.copy(autoFontSize = it))
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = theme.accentColor
+                                )
+                            )
                         }
-                        Text(rootBtnLabel, fontSize = 12.sp, color = theme.chromeTextColor)
-                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                        if (settings.autoFontSize) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Auto scale offset", fontSize = 12.sp, color = theme.chromeMutedColor)
+                                    val sign = if (settings.autoFontOffsetSp > 0f) "+" else ""
+                                    Text(
+                                        text = "$sign${settings.autoFontOffsetSp}sp",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Slider(
+                                    value = settings.autoFontOffsetSp,
+                                    onValueChange = { raw ->
+                                        val snapped = round(raw * 2f) / 2f
+                                        onUpdateSettings(settings.copy(autoFontOffsetSp = snapped))
+                                    },
+                                    valueRange = -3f..6f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = theme.accentColor,
+                                        activeTrackColor = theme.accentColor
+                                    )
+                                )
+                            }
+                        } else {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Manual font size", fontSize = 12.sp, color = theme.chromeMutedColor)
+                                    Text(
+                                        text = "${settings.manualFontSizeSp}sp",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Slider(
+                                    value = settings.manualFontSizeSp,
+                                    onValueChange = { raw ->
+                                        val snapped = round(raw * 2f) / 2f
+                                        onUpdateSettings(settings.copy(manualFontSizeSp = snapped))
+                                    },
+                                    valueRange = 10f..26f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = theme.accentColor,
+                                        activeTrackColor = theme.accentColor
+                                    )
+                                )
+                            }
+                        }
+
+                        Text("Monospace typeface", fontSize = 12.sp, color = theme.chromeMutedColor)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            MonoTypeface.entries.forEach { face ->
+                                val selected = settings.typeface == face
+                                OptionRow(
+                                    label = face.label,
+                                    trailing = "0O1lI",
+                                    selected = selected,
+                                    theme = theme,
+                                    onClick = { onUpdateSettings(settings.copy(typeface = face)) }
+                                )
+                            }
+                        }
+
+                        Text("Line height", fontSize = 12.sp, color = theme.chromeMutedColor)
+                        SegmentedRow(
+                            options = listOf(1.15f to "1.15", 1.25f to "1.25", 1.4f to "1.4"),
+                            selected = settings.lineHeightMultiplier,
+                            theme = theme,
+                            onSelect = { onUpdateSettings(settings.copy(lineHeightMultiplier = it)) }
+                        )
+                    }
+                }
+
+                // 3. Terminal Session Status
+                val sessionSummary = when (session.status) {
+                    SessionStatus.RUNNING -> "${session.deviceName} · ${session.rootState.label}"
+                    SessionStatus.EXITED -> "Exited (${session.exitCode ?: 0})"
+                    SessionStatus.CONNECTING -> "Starting"
+                }
+                ExpandableSettingsSection(
+                    title = "Terminal Session Status",
+                    summary = sessionSummary,
+                    expanded = expandedSection == SettingsSection.SESSION,
+                    theme = theme,
+                    onToggle = {
+                        expandedSection = if (expandedSection == SettingsSection.SESSION) null else SettingsSection.SESSION
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        InfoRow("Package", "com.thallyace.terminal", theme)
+                        InfoRow("Device Prompt", session.deviceName, theme)
+                        InfoRow(
+                            "Service Status",
+                            when (session.status) {
+                                SessionStatus.RUNNING -> "Active until exit"
+                                SessionStatus.EXITED -> "Exited (${session.exitCode ?: 0})"
+                                SessionStatus.CONNECTING -> "Starting"
+                            },
+                            theme
+                        )
+                        InfoRow(
+                            "Privilege / Root",
+                            "${session.rootState.label} · uid=${if (session.uid >= 0) session.uid else "—"}",
+                            theme
+                        )
+                        InfoRow("su Binary", session.suPath ?: "Not found", theme)
+                        InfoRow("Shell / PID", "${session.shellPath} · ${if (session.pid > 0) session.pid else "—"}", theme)
+                        InfoRow("Grid Size", "${session.cols} × ${session.rows}", theme)
+                        InfoRow("Uptime", formatUptime(session.startedAtMillis, session.endedAtMillis ?: nowMillis), theme)
+
+                        OutlinedButton(
+                            onClick = onRequestRoot,
+                            enabled = session.rootState != RootAccessState.ROOT_GRANTED &&
+                                session.rootState != RootAccessState.CHECKING,
+                            border = BorderStroke(1.dp, theme.chromeBorderColor),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp)
+                        ) {
+                            val rootBtnLabel = when (session.rootState) {
+                                RootAccessState.ROOT_GRANTED -> "Root shell active (${session.deviceName}:#)"
+                                RootAccessState.CHECKING -> "Checking su access..."
+                                RootAccessState.USER_NO_SU -> "Request Root (su) — no binary found"
+                                RootAccessState.ROOT_DENIED -> "Retry Root Elevation (su)"
+                                RootAccessState.USER_SU_AVAILABLE -> "Elevate to Root Shell (su)"
+                            }
+                            Text(rootBtnLabel, fontSize = 12.sp, color = theme.chromeTextColor)
+                        }
+
                         OutlinedButton(
                             onClick = onSendSigint,
                             enabled = session.status == SessionStatus.RUNNING,
                             border = BorderStroke(1.dp, theme.chromeBorderColor),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp)
                         ) {
                             Text("SIGINT (^C)", fontSize = 12.sp, color = theme.chromeTextColor)
                         }
-
-                        Button(
-                            onClick = onRestartService,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = theme.accentColor,
-                                contentColor = theme.accentTextColor
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                        ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.size(6.dp))
-                            Text("Restart", fontSize = 12.sp)
-                        }
                     }
+                }
+            }
+        }
+    }
+}
 
-                    OutlinedButton(
-                        onClick = onResetDefaults,
-                        border = BorderStroke(1.dp, theme.chromeBorderColor),
-                        shape = RoundedCornerShape(8.dp),
+@Composable
+private fun ExpandableSettingsSection(
+    title: String,
+    summary: String,
+    expanded: Boolean,
+    theme: TerminalTheme,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = theme.chromeBgColor,
+        border = BorderStroke(1.dp, if (expanded) theme.accentColor else theme.chromeBorderColor),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                onClick = onToggle,
+                color = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 54.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 42.dp)
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Text("Reset settings to defaults", fontSize = 12.sp, color = theme.chromeMutedColor)
+                        Text(
+                            text = title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = theme.chromeTextColor
+                        )
+                        Text(
+                            text = summary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = if (expanded) theme.accentColor else theme.chromeMutedColor
+                        )
                     }
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = theme.chromeTextColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+                ) {
+                    HorizontalDivider(
+                        color = theme.chromeBorderColor,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    content()
                 }
             }
         }
@@ -504,7 +510,7 @@ private fun OptionRow(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(8.dp),
-        color = if (selected) theme.chromeBgColor else Color.Transparent,
+        color = if (selected) theme.chromeSurfaceColor else Color.Transparent,
         border = BorderStroke(1.dp, if (selected) theme.accentColor else theme.chromeBorderColor),
         modifier = Modifier
             .fillMaxWidth()
@@ -537,7 +543,7 @@ private fun <T> SegmentedRow(
             Surface(
                 onClick = { onSelect(value) },
                 shape = RoundedCornerShape(8.dp),
-                color = if (isSelected) theme.accentColor else theme.chromeBgColor,
+                color = if (isSelected) theme.accentColor else theme.chromeSurfaceColor,
                 contentColor = if (isSelected) theme.accentTextColor else theme.chromeTextColor,
                 border = BorderStroke(1.dp, if (isSelected) theme.accentColor else theme.chromeBorderColor),
                 modifier = Modifier

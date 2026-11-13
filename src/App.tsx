@@ -78,10 +78,6 @@ export default function App() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const resetSettings = useCallback(() => {
-    setSettings(DEFAULT_TERMINAL_SETTINGS);
-  }, []);
-
   const handleRestartService = useCallback(async () => {
     try {
       const res = await fetch('/api/terminal/restart', {
@@ -329,9 +325,7 @@ export default function App() {
           terminalRef.current?.focus();
         }}
         onUpdate={updateSetting}
-        onResetDefaults={resetSettings}
         onSendSigint={handleSendSigint}
-        onRestartService={handleRestartService}
       />
     </div>
   );
