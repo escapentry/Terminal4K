@@ -213,7 +213,12 @@ fun TerminalScreen(
                 IconButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                        val primary = clipboard?.primaryClip
+                        val clip = if (primary != null && primary.itemCount > 0) {
+                            primary.getItemAt(0)?.coerceToText(context)?.toString()
+                        } else {
+                            null
+                        }
                         if (!clip.isNullOrEmpty() && session.status == SessionStatus.RUNNING) {
                             service.writeInput(clip)
                         }

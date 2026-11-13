@@ -35,21 +35,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK, NDK, and CMake
         uses: android-actions/setup-android@v3
-
-      - name: Accept Android licenses & install SDK, NDK, CMake
-        shell: bash
-        run: |
-          set +o pipefail
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          set -o pipefail
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "cmake;3.22.1" \
-            "ndk;27.0.12077973"
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 cmake;3.22.1 ndk;27.0.12077973'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

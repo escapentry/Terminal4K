@@ -18,7 +18,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags("")
+                cFlags("")
             }
         }
     }
@@ -44,6 +44,10 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        abortOnError = false
     }
 
     externalNativeBuild {

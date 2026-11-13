@@ -586,7 +586,7 @@ class TerminalBuffer(
             if (colorVal == TerminalCell.COLOR_DEFAULT) {
                 return if (isFg) theme.terminalFg else theme.terminalBg
             }
-            if ((colorVal and TerminalCell.COLOR_INDEX_FLAG) != 0) {
+            if ((colorVal ushr 24) == 0x10) {
                 var idx = colorVal and 0xFF
                 if (isFg && bold && boldBright && idx in 0..7) {
                     idx += 8
