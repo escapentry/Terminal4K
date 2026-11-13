@@ -2,13 +2,15 @@ package com.thallyace.terminal.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -17,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,30 +92,24 @@ fun ExtraKeysBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(theme.chromeSurfaceColor)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .padding(horizontal = 4.dp, vertical = 3.dp)
     ) {
-        val rows = if (maxWidth < 340.dp) EXTRA_KEYS_3_ROWS else EXTRA_KEYS_2_ROWS
+        val rows = if (maxWidth < 290.dp) EXTRA_KEYS_3_ROWS else EXTRA_KEYS_2_ROWS
+        val keyShape = RoundedCornerShape(5.dp)
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             rows.forEach { rowKeys ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     rowKeys.forEach { key ->
                         val armed = (key.isCtrl && ctrlArmed) || (key.isAlt && altArmed)
                         Surface(
-                            onClick = {
-                                when {
-                                    key.isCtrl -> onToggleCtrl()
-                                    key.isAlt -> onToggleAlt()
-                                    key.sequence != null -> onSendSequence(key.sequence)
-                                }
-                            },
-                            shape = RoundedCornerShape(6.dp),
+                            shape = keyShape,
                             color = if (armed) theme.accentColor else theme.chromeBgColor,
                             contentColor = if (armed) theme.accentTextColor else theme.chromeTextColor,
                             border = BorderStroke(
@@ -121,16 +118,26 @@ fun ExtraKeysBar(
                             ),
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 36.dp)
+                                .height(28.dp)
+                                .clip(keyShape)
+                                .clickable {
+                                    when {
+                                        key.isCtrl -> onToggleCtrl()
+                                        key.isAlt -> onToggleAlt()
+                                        key.sequence != null -> onSendSequence(key.sequence)
+                                    }
+                                }
                         ) {
                             Box(
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 7.dp),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 2.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = key.label,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
                                     softWrap = false,

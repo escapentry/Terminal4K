@@ -66,6 +66,8 @@ class TerminalSurfaceView(context: Context) : View(context) {
     private var lastReportedCols = 0
     private var lastReportedRows = 0
 
+    private var deadKeyAccent = 0
+
     private val gestureDetector = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
@@ -100,7 +102,7 @@ class TerminalSurfaceView(context: Context) : View(context) {
     init {
         isFocusable = true
         isFocusableInTouchMode = true
-        isClickable = true
+        isClickable = false
     }
 
     override fun onAttachedToWindow() {
@@ -213,8 +215,10 @@ class TerminalSurfaceView(context: Context) : View(context) {
     override fun onCheckIsTextEditor(): Boolean = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_NULL
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_ACTION_NONE
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+            EditorInfo.IME_ACTION_NONE
 
         return object : BaseInputConnection(this, false) {
             private var composingBuffer: String = ""
@@ -244,6 +248,12 @@ class TerminalSurfaceView(context: Context) : View(context) {
                 composingBuffer = if (keepComposing) nextText else ""
             }
 
+            override fun beginBatchEdit(): Boolean = true
+
+            override fun endBatchEdit(): Boolean = true
+
+            override fun setComposingRegion(start: Int, end: Int): Boolean = true
+
             override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 applyComposingUpdate(text?.toString() ?: "", keepComposing = true)
                 return true
@@ -269,9 +279,15 @@ class TerminalSurfaceView(context: Context) : View(context) {
                 return if (composingBuffer.isNotEmpty()) {
                     composingBuffer.takeLast(n)
                 } else {
-                    " "
+                    // Non-whitespace sentinel prevents IME auto-space/double-space-period
+                    // suppression while keeping Backspace enabled on empty lines.
+                    "a"
                 }
             }
+
+            override fun getTextAfterCursor(n: Int, flags: Int): CharSequence = ""
+
+            override fun getSelectedText(flags: Int): CharSequence? = null
 
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
                 if (beforeLength > 0) {
@@ -297,20 +313,35 @@ class TerminalSurfaceView(context: Context) : View(context) {
                 return true
             }
 
+            @Suppress("DEPRECATION")
             override fun sendKeyEvent(event: KeyEvent): Boolean {
                 if (event.action == KeyEvent.ACTION_DOWN) {
-                    if (handleKeyCode(event)) {
+                    if (isTerminalHandledKey(event) && handleKeyCode(event)) {
                         composingBuffer = ""
                         return true
                     }
-                } else if (event.action == KeyEvent.ACTION_MULTIPLE &&
-                    event.keyCode == KeyEvent.KEYCODE_UNKNOWN
-                ) {
-                    val chars = event.characters
-                    if (!chars.isNullOrEmpty()) {
-                        composingBuffer = ""
-                        handleCommittedText(chars)
+                } else if (event.action == KeyEvent.ACTION_UP) {
+                    if (isTerminalHandledKey(event)) {
                         return true
+                    }
+                } else if (event.action == KeyEvent.ACTION_MULTIPLE) {
+                    if (event.keyCode == KeyEvent.KEYCODE_UNKNOWN) {
+                        val chars = event.characters
+                        if (!chars.isNullOrEmpty()) {
+                            composingBuffer = ""
+                            handleCommittedText(chars)
+                            return true
+                        }
+                    } else if (isTerminalHandledKey(event)) {
+                        val repeats = event.repeatCount.coerceAtLeast(1)
+                        var handled = false
+                        repeat(repeats) {
+                            if (handleKeyCode(event)) handled = true
+                        }
+                        if (handled) {
+                            composingBuffer = ""
+                            return true
+                        }
                     }
                 }
                 return super.sendKeyEvent(event)
@@ -319,10 +350,17 @@ class TerminalSurfaceView(context: Context) : View(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (handleKeyCode(event)) {
+        if (isTerminalHandledKey(event) && handleKeyCode(event)) {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (isTerminalHandledKey(event)) {
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     @Suppress("DEPRECATION")
@@ -332,10 +370,57 @@ class TerminalSurfaceView(context: Context) : View(context) {
             handleCommittedText(chars)
             return true
         }
+        if (event != null && isTerminalHandledKey(event)) {
+            val repeats = repeatCount.coerceAtLeast(1)
+            var handled = false
+            repeat(repeats) {
+                if (handleKeyCode(event)) handled = true
+            }
+            if (handled) return true
+        }
         return super.onKeyMultiple(keyCode, repeatCount, event)
     }
 
+    private fun isSystemPassThroughKey(keyCode: Int): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_HOME,
+            KeyEvent.KEYCODE_MENU,
+            KeyEvent.KEYCODE_APP_SWITCH,
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_VOLUME_MUTE,
+            KeyEvent.KEYCODE_POWER,
+            KeyEvent.KEYCODE_CAMERA,
+            KeyEvent.KEYCODE_CALL,
+            KeyEvent.KEYCODE_ENDCALL,
+            KeyEvent.KEYCODE_HEADSETHOOK,
+            KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_SHIFT_RIGHT,
+            KeyEvent.KEYCODE_CTRL_LEFT,
+            KeyEvent.KEYCODE_CTRL_RIGHT,
+            KeyEvent.KEYCODE_ALT_LEFT,
+            KeyEvent.KEYCODE_ALT_RIGHT,
+            KeyEvent.KEYCODE_META_LEFT,
+            KeyEvent.KEYCODE_META_RIGHT,
+            KeyEvent.KEYCODE_SYM,
+            KeyEvent.KEYCODE_FUNCTION,
+            KeyEvent.KEYCODE_CAPS_LOCK,
+            KeyEvent.KEYCODE_NUM_LOCK,
+            KeyEvent.KEYCODE_SCROLL_LOCK -> true
+            else -> false
+        }
+    }
+
+    private fun isTerminalHandledKey(event: KeyEvent): Boolean {
+        return !isSystemPassThroughKey(event.keyCode)
+    }
+
     private fun handleKeyCode(event: KeyEvent): Boolean {
+        if (isSystemPassThroughKey(event.keyCode)) {
+            return false
+        }
+
         if (sessionExited) {
             if (event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
                 onRestartRequested?.invoke()
@@ -345,17 +430,43 @@ class TerminalSurfaceView(context: Context) : View(context) {
         }
 
         when (event.keyCode) {
+            KeyEvent.KEYCODE_SPACE -> {
+                if (event.isCtrlPressed) {
+                    sendBytes(byteArrayOf(0x00))
+                } else if (event.isAltPressed) {
+                    sendBytes(byteArrayOf(0x1B, ' '.code.toByte()))
+                } else {
+                    sendTextWithModifiers(" ")
+                }
+                return true
+            }
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                sendTextWithModifiers("\r")
+                if (event.isAltPressed) {
+                    sendBytes(byteArrayOf(0x1B, '\r'.code.toByte()))
+                } else {
+                    sendTextWithModifiers("\r")
+                }
                 return true
             }
             KeyEvent.KEYCODE_DEL -> {
                 val bs = if (settings.backspaceMode == BackspaceMode.CTRL_H) "\u0008" else "\u007f"
-                sendTextWithModifiers(bs)
+                if (event.isAltPressed) {
+                    sendTextWithModifiers("\u001b$bs")
+                } else {
+                    sendTextWithModifiers(bs)
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_FORWARD_DEL -> {
+                sendTextWithModifiers("\u001b[3~")
                 return true
             }
             KeyEvent.KEYCODE_TAB -> {
-                sendTextWithModifiers("\t")
+                if (event.isShiftPressed) {
+                    sendTextWithModifiers("\u001b[Z")
+                } else {
+                    sendTextWithModifiers("\t")
+                }
                 return true
             }
             KeyEvent.KEYCODE_ESCAPE -> {
@@ -386,23 +497,74 @@ class TerminalSurfaceView(context: Context) : View(context) {
                 sendTextWithModifiers("\u001b[F")
                 return true
             }
+            KeyEvent.KEYCODE_PAGE_UP -> {
+                sendTextWithModifiers("\u001b[5~")
+                return true
+            }
+            KeyEvent.KEYCODE_PAGE_DOWN -> {
+                sendTextWithModifiers("\u001b[6~")
+                return true
+            }
+            KeyEvent.KEYCODE_INSERT -> {
+                sendTextWithModifiers("\u001b[2~")
+                return true
+            }
+            KeyEvent.KEYCODE_F1 -> { sendTextWithModifiers("\u001bOP"); return true }
+            KeyEvent.KEYCODE_F2 -> { sendTextWithModifiers("\u001bOQ"); return true }
+            KeyEvent.KEYCODE_F3 -> { sendTextWithModifiers("\u001bOR"); return true }
+            KeyEvent.KEYCODE_F4 -> { sendTextWithModifiers("\u001bOS"); return true }
+            KeyEvent.KEYCODE_F5 -> { sendTextWithModifiers("\u001b[15~"); return true }
+            KeyEvent.KEYCODE_F6 -> { sendTextWithModifiers("\u001b[17~"); return true }
+            KeyEvent.KEYCODE_F7 -> { sendTextWithModifiers("\u001b[18~"); return true }
+            KeyEvent.KEYCODE_F8 -> { sendTextWithModifiers("\u001b[19~"); return true }
+            KeyEvent.KEYCODE_F9 -> { sendTextWithModifiers("\u001b[20~"); return true }
+            KeyEvent.KEYCODE_F10 -> { sendTextWithModifiers("\u001b[21~"); return true }
+            KeyEvent.KEYCODE_F11 -> { sendTextWithModifiers("\u001b[23~"); return true }
+            KeyEvent.KEYCODE_F12 -> { sendTextWithModifiers("\u001b[24~"); return true }
         }
 
-        val unicode = event.unicodeChar
-        if (unicode != 0) {
-            val ch = unicode.toChar()
-            if (event.isCtrlPressed) {
-                val ctrlChar = toControlChar(ch)
+        val shiftOnlyMeta = event.metaState and KeyEvent.META_SHIFT_MASK
+        var unicode = event.getUnicodeChar(event.metaState)
+        if (unicode == 0 && (event.isCtrlPressed || event.isAltPressed)) {
+            unicode = event.getUnicodeChar(shiftOnlyMeta)
+        }
+        if (unicode == 0) {
+            unicode = android.view.KeyCharacterMap
+                .load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD)
+                .get(event.keyCode, if (event.isCtrlPressed || event.isAltPressed) shiftOnlyMeta else event.metaState)
+        }
+
+        if ((unicode and android.view.KeyCharacterMap.COMBINING_ACCENT) != 0) {
+            deadKeyAccent = unicode and android.view.KeyCharacterMap.COMBINING_ACCENT_MASK
+            return true
+        }
+
+        if (unicode > 0) {
+            var codePoint = unicode
+            if (deadKeyAccent != 0) {
+                val combined = android.view.KeyCharacterMap.getDeadChar(deadKeyAccent, unicode)
+                deadKeyAccent = 0
+                if (combined != 0) {
+                    codePoint = combined
+                }
+            }
+            val text = String(Character.toChars(codePoint))
+            if (event.isCtrlPressed && text.length == 1) {
+                val ctrlChar = toControlChar(text[0])
                 if (ctrlChar != null) {
-                    sendBytes(byteArrayOf(ctrlChar))
+                    if (event.isAltPressed) {
+                        sendBytes(byteArrayOf(0x1B, ctrlChar))
+                    } else {
+                        sendBytes(byteArrayOf(ctrlChar))
+                    }
                     return true
                 }
             }
             if (event.isAltPressed) {
-                sendTextWithModifiers("\u001b$ch")
+                sendTextWithModifiers("\u001b$text")
                 return true
             }
-            handleCommittedText(ch.toString())
+            handleCommittedText(text)
             return true
         }
         return false
@@ -448,10 +610,13 @@ class TerminalSurfaceView(context: Context) : View(context) {
         return when (ch) {
             in 'a'..'z' -> (ch.code - 'a'.code + 1).toByte()
             in 'A'..'Z' -> (ch.code - 'A'.code + 1).toByte()
-            ' ' -> 0.toByte()
+            ' ', '@' -> 0.toByte()
             '[' -> 27.toByte()
             '\\' -> 28.toByte()
             ']' -> 29.toByte()
+            '^', '6' -> 30.toByte()
+            '_', '-', '/' -> 31.toByte()
+            '?' -> 127.toByte()
             else -> null
         }
     }
