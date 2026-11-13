@@ -1,4 +1,4 @@
-package com.android.terminal
+package com.thallyace.terminal
 
 import android.Manifest
 import android.content.ComponentName
@@ -26,8 +26,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import com.android.terminal.service.TerminalService
-import com.android.terminal.ui.TerminalScreen
+import com.thallyace.terminal.service.TerminalService
+import com.thallyace.terminal.ui.TerminalScreen
 
 class MainActivity : ComponentActivity() {
 

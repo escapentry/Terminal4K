@@ -1,4 +1,4 @@
-package com.android.terminal.service
+package com.thallyace.terminal.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -11,12 +11,12 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.android.terminal.MainActivity
-import com.android.terminal.R
-import com.android.terminal.model.SessionInfo
-import com.android.terminal.model.SessionStatus
-import com.android.terminal.pty.PtyNative
-import com.android.terminal.terminal.TerminalBuffer
+import com.thallyace.terminal.MainActivity
+import com.thallyace.terminal.R
+import com.thallyace.terminal.model.SessionInfo
+import com.thallyace.terminal.model.SessionStatus
+import com.thallyace.terminal.pty.PtyNative
+import com.thallyace.terminal.terminal.TerminalBuffer
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -210,7 +210,7 @@ class TerminalService : Service() {
 
             stopForegroundCompat()
             stopSelf()
-        }, "com.android.terminal-pty-reader")
+        }, "com.thallyace.terminal-pty-reader")
         readerThread = thread
         thread.start()
     }
@@ -301,7 +301,7 @@ class TerminalService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Persistent session running (com.android.terminal)")
+            .setContentText("Persistent session running (com.thallyace.terminal)")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openPending)
@@ -317,6 +317,6 @@ class TerminalService : Service() {
     companion object {
         private const val CHANNEL_ID = "terminal_service_channel"
         private const val NOTIFICATION_ID = 1001
-        const val ACTION_STOP_SERVICE = "com.android.terminal.action.STOP_SERVICE"
+        const val ACTION_STOP_SERVICE = "com.thallyace.terminal.action.STOP_SERVICE"
     }
 }

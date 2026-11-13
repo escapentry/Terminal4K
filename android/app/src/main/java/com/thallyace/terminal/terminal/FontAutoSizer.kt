@@ -1,6 +1,6 @@
-package com.android.terminal.terminal
+package com.thallyace.terminal.terminal
 
-import com.android.terminal.model.ComputedFontMetrics
+import com.thallyace.terminal.model.ComputedFontMetrics
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round

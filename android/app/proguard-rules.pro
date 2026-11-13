@@ -1,1 +1,1 @@
--keep class com.android.terminal.pty.PtyNative { *; }
+-keep class com.thallyace.terminal.pty.PtyNative { *; }

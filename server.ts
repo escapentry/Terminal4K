@@ -7,7 +7,7 @@ import express, { type Request, type Response } from 'express';
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_SCROLLBACK_BYTES = 512 * 1024;
-const RC_FILE_PATH = path.join(os.tmpdir(), 'com_android_terminal_rc');
+const RC_FILE_PATH = path.join(os.tmpdir(), 'com_thallyace_terminal_rc');
 
 function ensureRcFile() {
   const rcContent = [
@@ -16,12 +16,12 @@ function ensureRcFile() {
     'shopt -s checkwinsize 2>/dev/null || true',
     'export TERM=xterm-256color',
     'export COLORTERM=truecolor',
-    'export TERMINAL_PACKAGE=com.android.terminal',
+    'export TERMINAL_PACKAGE=com.thallyace.terminal',
     'alias ls="ls --color=auto"',
     'alias ll="ls -la --color=auto"',
     'alias la="ls -A --color=auto"',
     'alias cls="clear"',
-    'PS1="\\[\\e[1;36m\\]com.android.terminal\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ "',
+    'PS1="\\[\\e[1;36m\\]com.thallyace.terminal\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ "',
     '',
   ].join('\n');
   fs.writeFileSync(RC_FILE_PATH, rcContent, { mode: 0o600 });
@@ -73,7 +73,7 @@ class PersistentTerminalService {
       cols: this.cols,
       rows: this.rows,
       shell: this.shell,
-      packageName: 'com.android.terminal',
+      packageName: 'com.thallyace.terminal',
     };
   }
 
@@ -393,7 +393,7 @@ async function startServer() {
       }
       const zipBuffer = Buffer.concat(chunks);
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', 'attachment; filename="Terminal-com.android.terminal-github.zip"');
+      res.setHeader('Content-Disposition', 'attachment; filename="Terminal-com.thallyace.terminal-github.zip"');
       res.setHeader('Content-Length', String(zipBuffer.length));
       res.send(zipBuffer);
     });
@@ -417,7 +417,7 @@ async function startServer() {
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`com.android.terminal service listening on http://0.0.0.0:${PORT}`);
+    console.log(`com.thallyace.terminal service listening on http://0.0.0.0:${PORT}`);
   });
 
   const cleanup = () => {

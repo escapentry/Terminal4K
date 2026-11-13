@@ -1,4 +1,4 @@
-package com.android.terminal.model
+package com.thallyace.terminal.model
 
 enum class CursorStyle(val label: String) {
     BLOCK("Block"),

@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 JNIEXPORT jintArray JNICALL
-Java_com_android_terminal_pty_PtyNative_spawnShell(
+Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     JNIEnv *env,
     jobject thiz,
     jstring jShellPath,
@@ -101,8 +101,8 @@ Java_com_android_terminal_pty_PtyNative_spawnShell(
         setenv("TERM", "xterm-256color", 1);
         setenv("COLORTERM", "truecolor", 1);
         setenv("LANG", "C.UTF-8", 1);
-        setenv("TERMINAL_PACKAGE", "com.android.terminal", 1);
-        setenv("PS1", "com.android.terminal:$PWD$ ", 1);
+        setenv("TERMINAL_PACKAGE", "com.thallyace.terminal", 1);
+        setenv("PS1", "com.thallyace.terminal:$PWD$ ", 1);
 
         char *const args[] = { (char *)shellPath, "-i", NULL };
         execvp(shellPath, args);
@@ -123,7 +123,7 @@ Java_com_android_terminal_pty_PtyNative_spawnShell(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_android_terminal_pty_PtyNative_readFd(
+Java_com_thallyace_terminal_pty_PtyNative_readFd(
     JNIEnv *env,
     jobject thiz,
     jint fd,
@@ -147,7 +147,7 @@ Java_com_android_terminal_pty_PtyNative_readFd(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_android_terminal_pty_PtyNative_writeFd(
+Java_com_thallyace_terminal_pty_PtyNative_writeFd(
     JNIEnv *env,
     jobject thiz,
     jint fd,
@@ -175,7 +175,7 @@ Java_com_android_terminal_pty_PtyNative_writeFd(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_android_terminal_pty_PtyNative_setWindowSize(
+Java_com_thallyace_terminal_pty_PtyNative_setWindowSize(
     JNIEnv *env,
     jobject thiz,
     jint fd,
@@ -192,7 +192,7 @@ Java_com_android_terminal_pty_PtyNative_setWindowSize(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_android_terminal_pty_PtyNative_waitForChild(
+Java_com_thallyace_terminal_pty_PtyNative_waitForChild(
     JNIEnv *env,
     jobject thiz,
     jint pid
@@ -212,7 +212,7 @@ Java_com_android_terminal_pty_PtyNative_waitForChild(
 }
 
 JNIEXPORT jint JNICALL
-Java_com_android_terminal_pty_PtyNative_sendSignal(
+Java_com_thallyace_terminal_pty_PtyNative_sendSignal(
     JNIEnv *env,
     jobject thiz,
     jint pid,
@@ -228,7 +228,7 @@ Java_com_android_terminal_pty_PtyNative_sendSignal(
 }
 
 JNIEXPORT void JNICALL
-Java_com_android_terminal_pty_PtyNative_closeFd(
+Java_com_thallyace_terminal_pty_PtyNative_closeFd(
     JNIEnv *env,
     jobject thiz,
     jint fd

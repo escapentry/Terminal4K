@@ -1,4 +1,4 @@
-package com.android.terminal.model
+package com.thallyace.terminal.model
 
 import androidx.compose.ui.graphics.Color
 

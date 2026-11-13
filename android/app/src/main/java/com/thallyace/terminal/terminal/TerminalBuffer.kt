@@ -1,7 +1,7 @@
-package com.android.terminal.terminal
+package com.thallyace.terminal.terminal
 
-import com.android.terminal.model.TerminalTheme
-import com.android.terminal.model.TerminalThemes
+import com.thallyace.terminal.model.TerminalTheme
+import com.thallyace.terminal.model.TerminalThemes
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction

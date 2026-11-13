@@ -1,4 +1,4 @@
-package com.android.terminal.ui
+package com.thallyace.terminal.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -53,14 +53,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.terminal.model.BellMode
-import com.android.terminal.model.ExtraKeysMode
-import com.android.terminal.model.SessionStatus
-import com.android.terminal.model.TerminalSettings
-import com.android.terminal.model.TerminalSettingsRepository
-import com.android.terminal.model.TerminalThemes
-import com.android.terminal.service.TerminalService
-import com.android.terminal.terminal.FontAutoSizer
+import com.thallyace.terminal.model.BellMode
+import com.thallyace.terminal.model.ExtraKeysMode
+import com.thallyace.terminal.model.SessionStatus
+import com.thallyace.terminal.model.TerminalSettings
+import com.thallyace.terminal.model.TerminalSettingsRepository
+import com.thallyace.terminal.model.TerminalThemes
+import com.thallyace.terminal.service.TerminalService
+import com.thallyace.terminal.terminal.FontAutoSizer
 import kotlinx.coroutines.delay
 
 @Composable

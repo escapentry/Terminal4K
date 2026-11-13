@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Terminal (com.android.terminal)
+    name: Build Terminal (com.thallyace.terminal)
     runs-on: ubuntu-latest
 
     steps:
@@ -52,13 +52,13 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: Terminal-com.android.terminal-debug
+          name: Terminal-com.thallyace.terminal-debug
           path: ${{ steps.android_project.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Upload Release APK (Unsigned)
         uses: actions/upload-artifact@v4
         with:
-          name: Terminal-com.android.terminal-release-unsigned
+          name: Terminal-com.thallyace.terminal-release-unsigned
           path: ${{ steps.android_project.outputs.dir }}/app/build/outputs/apk/release/*.apk
           if-no-files-found: error

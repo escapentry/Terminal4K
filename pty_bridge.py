@@ -58,7 +58,7 @@ def main() -> None:
         env["COLORTERM"] = "truecolor"
         env["LANG"] = env.get("LANG", "C.UTF-8")
         env["LC_ALL"] = env.get("LC_ALL", "C.UTF-8")
-        env["TERMINAL_PACKAGE"] = "com.android.terminal"
+        env["TERMINAL_PACKAGE"] = "com.thallyace.terminal"
 
         shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
         if shell.endswith("bash") and rc_path and os.path.exists(rc_path):

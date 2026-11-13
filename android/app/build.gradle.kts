@@ -5,12 +5,12 @@ plugins {
 }
 
 android {
-    namespace = "com.android.terminal"
+    namespace = "com.thallyace.terminal"
     compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "com.android.terminal"
+        applicationId = "com.thallyace.terminal"
         minSdk = 24
         targetSdk = 35
         versionCode = 1

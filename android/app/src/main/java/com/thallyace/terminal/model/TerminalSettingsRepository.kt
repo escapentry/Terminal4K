@@ -1,9 +1,9 @@
-package com.android.terminal.model
+package com.thallyace.terminal.model
 
 import android.content.Context
 
 class TerminalSettingsRepository(context: Context) {
-    private val prefs = context.getSharedPreferences("com.android.terminal.settings", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("com.thallyace.terminal.settings", Context.MODE_PRIVATE)
 
     fun load(): TerminalSettings {
         return TerminalSettings(

@@ -1,4 +1,4 @@
-package com.android.terminal.pty
+package com.thallyace.terminal.pty
 
 object PtyNative {
     init {

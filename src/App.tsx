@@ -11,7 +11,7 @@ import {
 } from './types/terminal';
 import { TERMINAL_THEMES } from './utils/terminalThemes';
 
-const SETTINGS_STORAGE_KEY = 'com.android.terminal.settings.v1';
+const SETTINGS_STORAGE_KEY = 'com.thallyace.terminal.settings.v1';
 
 function loadSettings(): TerminalSettings {
   try {
@@ -173,7 +173,7 @@ export default function App() {
         <div className="flex items-center gap-2.5 min-w-0">
           <TerminalSquare className="w-4 h-4 shrink-0" style={{ color: theme.accent }} />
           <span className="font-mono text-sm font-semibold tracking-tight truncate whitespace-nowrap">
-            com.android.terminal
+            com.thallyace.terminal
           </span>
           <span
             className="hidden sm:inline-flex items-center gap-1.5 text-xs font-mono tabular-nums whitespace-nowrap shrink-0"
@@ -237,7 +237,7 @@ export default function App() {
 
           <a
             href="/api/android/download-source"
-            download="Terminal-com.android.terminal-github.zip"
+            download="Terminal-com.thallyace.terminal-github.zip"
             title="Download Android source and GitHub workflow (.zip)"
             aria-label="Download Android source and GitHub workflow"
             className="min-h-[38px] min-w-[38px] px-2.5 rounded-md text-xs font-medium whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors"

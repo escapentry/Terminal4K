@@ -496,7 +496,7 @@ export function SettingsDrawer({
 
             <dl className="grid grid-cols-2 gap-y-2 text-xs font-mono tabular-nums">
               <dt style={{ color: theme.chromeMuted }}>Package</dt>
-              <dd className="text-right truncate">com.android.terminal</dd>
+              <dd className="text-right truncate">com.thallyace.terminal</dd>
 
               <dt style={{ color: theme.chromeMuted }}>Service Status</dt>
               <dd className="text-right">
@@ -573,13 +573,13 @@ export function SettingsDrawer({
               Android Source & GitHub Workflow
             </h3>
             <p className="text-xs leading-relaxed" style={{ color: theme.chromeMuted }}>
-              Includes the native Android project (<span className="font-mono">com.android.terminal</span>) and{' '}
+              Includes the native Android project (<span className="font-mono">com.thallyace.terminal</span>) and{' '}
               <span className="font-mono">.github/workflows/build-android.yml</span> for GitHub Actions APK builds.
             </p>
             <div className="grid grid-cols-1 gap-2">
               <a
                 href="/api/android/download-source"
-                download="Terminal-com.android.terminal-github.zip"
+                download="Terminal-com.thallyace.terminal-github.zip"
                 className="min-h-[42px] px-3 rounded-md text-xs font-medium whitespace-nowrap flex items-center justify-center gap-2"
                 style={{
                   backgroundColor: theme.accent,

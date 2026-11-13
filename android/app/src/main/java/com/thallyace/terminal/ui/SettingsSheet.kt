@@ -1,4 +1,4 @@
-package com.android.terminal.ui
+package com.thallyace.terminal.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -47,17 +47,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.terminal.model.BackspaceMode
-import com.android.terminal.model.BellMode
-import com.android.terminal.model.ComputedFontMetrics
-import com.android.terminal.model.CursorStyle
-import com.android.terminal.model.ExtraKeysMode
-import com.android.terminal.model.MonoTypeface
-import com.android.terminal.model.SessionInfo
-import com.android.terminal.model.SessionStatus
-import com.android.terminal.model.TerminalSettings
-import com.android.terminal.model.TerminalTheme
-import com.android.terminal.model.TerminalThemes
+import com.thallyace.terminal.model.BackspaceMode
+import com.thallyace.terminal.model.BellMode
+import com.thallyace.terminal.model.ComputedFontMetrics
+import com.thallyace.terminal.model.CursorStyle
+import com.thallyace.terminal.model.ExtraKeysMode
+import com.thallyace.terminal.model.MonoTypeface
+import com.thallyace.terminal.model.SessionInfo
+import com.thallyace.terminal.model.SessionStatus
+import com.thallyace.terminal.model.TerminalSettings
+import com.thallyace.terminal.model.TerminalTheme
+import com.thallyace.terminal.model.TerminalThemes
 import kotlinx.coroutines.delay
 import kotlin.math.round
 
@@ -400,7 +400,7 @@ fun SettingsSheet(
                         color = theme.chromeMutedColor
                     )
 
-                    InfoRow("Package", "com.android.terminal", theme)
+                    InfoRow("Package", "com.thallyace.terminal", theme)
                     InfoRow(
                         "Service Status",
                         when (session.status) {

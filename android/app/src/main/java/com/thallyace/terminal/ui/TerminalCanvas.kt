@@ -1,4 +1,4 @@
-package com.android.terminal.ui
+package com.thallyace.terminal.ui
 
 import android.content.Context
 import android.graphics.Canvas
@@ -22,13 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import com.android.terminal.model.BackspaceMode
-import com.android.terminal.model.CursorStyle
-import com.android.terminal.model.MonoTypeface
-import com.android.terminal.model.TerminalSettings
-import com.android.terminal.model.TerminalTheme
-import com.android.terminal.terminal.TerminalBuffer
-import com.android.terminal.terminal.TerminalCell
+import com.thallyace.terminal.model.BackspaceMode
+import com.thallyace.terminal.model.CursorStyle
+import com.thallyace.terminal.model.MonoTypeface
+import com.thallyace.terminal.model.TerminalSettings
+import com.thallyace.terminal.model.TerminalTheme
+import com.thallyace.terminal.terminal.TerminalBuffer
+import com.thallyace.terminal.terminal.TerminalCell
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
 import kotlin.math.max

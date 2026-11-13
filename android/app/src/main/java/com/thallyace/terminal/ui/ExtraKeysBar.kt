@@ -1,4 +1,4 @@
-package com.android.terminal.ui
+package com.thallyace.terminal.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.terminal.model.TerminalTheme
+import com.thallyace.terminal.model.TerminalTheme
 
 private data class ExtraKey(
     val label: String,
