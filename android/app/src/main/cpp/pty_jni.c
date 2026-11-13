@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -17,9 +18,15 @@ static int find_su_binary(char *outPath, size_t outSize) {
         "/system/bin/su",
         "/system/xbin/su",
         "/sbin/su",
+        "/bin/su",
         "/su/bin/su",
+        "/su/xbin/su",
         "/vendor/bin/su",
-        "/apex/com.android.runtime/bin/su"
+        "/debug_ramdisk/su",
+        "/apex/com.android.runtime/bin/su",
+        "/data/adb/ksu/bin/su",
+        "/data/adb/ap/bin/su",
+        "/data/adb/magisk/su"
     };
     size_t count = sizeof(candidates) / sizeof(candidates[0]);
     for (size_t i = 0; i < count; i++) {
@@ -28,7 +35,44 @@ static int find_su_binary(char *outPath, size_t outSize) {
             return 1;
         }
     }
+
+    const char *envPath = getenv("PATH");
+    if (envPath != NULL && envPath[0] != '\0') {
+        char pathCopy[2048];
+        snprintf(pathCopy, sizeof(pathCopy), "%s", envPath);
+        char *saveptr = NULL;
+        char *dir = strtok_r(pathCopy, ":", &saveptr);
+        while (dir != NULL) {
+            if (dir[0] != '\0') {
+                char probe[512];
+                snprintf(probe, sizeof(probe), "%s/su", dir);
+                if (access(probe, X_OK) == 0) {
+                    snprintf(outPath, outSize, "%s", probe);
+                    return 1;
+                }
+            }
+            dir = strtok_r(NULL, ":", &saveptr);
+        }
+    }
     return 0;
+}
+
+static void configure_system_path(void) {
+    const char *systemPaths =
+        "/sbin:/bin:/system/bin:/system/xbin:/system/sbin:"
+        "/vendor/bin:/vendor/xbin:/product/bin:/system_ext/bin:/odm/bin:"
+        "/apex/com.android.runtime/bin:/apex/com.android.art/bin:"
+        "/apex/com.android.os.statsd/bin:/debug_ramdisk:"
+        "/su/bin:/su/xbin:/data/adb/ksu/bin:/data/adb/ap/bin:/data/adb/magisk";
+
+    const char *cur = getenv("PATH");
+    char merged[4096];
+    if (cur != NULL && cur[0] != '\0') {
+        snprintf(merged, sizeof(merged), "%s:%s", systemPaths, cur);
+    } else {
+        snprintf(merged, sizeof(merged), "%s", systemPaths);
+    }
+    setenv("PATH", merged, 1);
 }
 
 JNIEXPORT jintArray JNICALL
@@ -146,18 +190,34 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
             close(slaveFd);
         }
 
+        configure_system_path();
+
+        char envPath[512];
+        char tmpDir[512];
+        envPath[0] = '\0';
+        tmpDir[0] = '\0';
+
         if (cwd != NULL && cwd[0] != '\0') {
             chdir(cwd);
             setenv("HOME", cwd, 1);
-            char envPath[512];
             snprintf(envPath, sizeof(envPath), "%s/.shrc", cwd);
             setenv("ENV", envPath, 1);
+            snprintf(tmpDir, sizeof(tmpDir), "%s/tmp", cwd);
+            mkdir(tmpDir, 0700);
+            setenv("TMPDIR", tmpDir, 1);
+        } else {
+            setenv("TMPDIR", "/data/local/tmp", 0);
         }
 
         const char *dev = (deviceName != NULL && deviceName[0] != '\0') ? deviceName : "android";
         setenv("TERM", "xterm-256color", 1);
         setenv("COLORTERM", "truecolor", 1);
         setenv("LANG", "C.UTF-8", 1);
+        setenv("HOSTNAME", dev, 1);
+        setenv("SHELL", "/system/bin/sh", 1);
+        setenv("ANDROID_ROOT", "/system", 0);
+        setenv("ANDROID_DATA", "/data", 0);
+        setenv("ANDROID_STORAGE", "/storage", 0);
         setenv("TERMINAL_PACKAGE", "com.thallyace.terminal", 1);
         setenv("TERMINAL_DEVICE", dev, 1);
 
@@ -165,8 +225,12 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         if (interactiveFlag) {
             if (getuid() == 0) {
                 snprintf(ps1Buf, sizeof(ps1Buf), "%s:# ", dev);
+                setenv("USER", "root", 1);
+                setenv("LOGNAME", "root", 1);
             } else {
                 snprintf(ps1Buf, sizeof(ps1Buf), "%s:$ ", dev);
+                setenv("USER", "shell", 0);
+                setenv("LOGNAME", "shell", 0);
             }
             setenv("PS1", ps1Buf, 1);
             char *const args[] = { (char *)shellPath, "-i", NULL };
@@ -174,8 +238,25 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         } else {
             snprintf(ps1Buf, sizeof(ps1Buf), "%s:# ", dev);
             setenv("PS1", ps1Buf, 1);
-            char *const args[] = { (char *)shellPath, NULL };
-            execvp(shellPath, args);
+            setenv("USER", "root", 1);
+            setenv("LOGNAME", "root", 1);
+
+            if (envPath[0] != '\0') {
+                char suCmd[2048];
+                snprintf(
+                    suCmd,
+                    sizeof(suCmd),
+                    "export ENV='%s' HOME='%s' TMPDIR='%s' TERM='xterm-256color' SHELL='/system/bin/sh' TERMINAL_DEVICE='%s'; if [ -x /system/bin/sh ]; then exec /system/bin/sh -i; else exec sh -i; fi",
+                    envPath,
+                    cwd != NULL ? cwd : "/data",
+                    tmpDir[0] != '\0' ? tmpDir : "/data/local/tmp",
+                    dev
+                );
+                char *const args[] = { (char *)shellPath, "-c", suCmd, NULL };
+                execvp(shellPath, args);
+            }
+            char *const fallbackArgs[] = { (char *)shellPath, NULL };
+            execvp(shellPath, fallbackArgs);
         }
         _exit(127);
     }

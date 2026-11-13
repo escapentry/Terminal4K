@@ -203,8 +203,24 @@ class TerminalService : Service() {
 
     private fun ensureShellInitScript(cwd: String, deviceName: String) {
         try {
+            val tmpDir = File(cwd, "tmp")
+            if (!tmpDir.exists()) {
+                tmpDir.mkdirs()
+            }
             val rcFile = File(cwd, ".shrc")
             val script = """
+                if [ -r /system/etc/mkshrc ]; then
+                  . /system/etc/mkshrc 2>/dev/null || true
+                fi
+                SYS_PATH="/sbin:/bin:/system/bin:/system/xbin:/system/sbin:/vendor/bin:/vendor/xbin:/product/bin:/system_ext/bin:/odm/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/apex/com.android.os.statsd/bin:/debug_ramdisk:/su/bin:/su/xbin:/data/adb/ksu/bin:/data/adb/ap/bin:/data/adb/magisk"
+                case ":${'$'}PATH:" in
+                  *:/system/bin:*) PATH="${'$'}SYS_PATH:${'$'}PATH" ;;
+                  *) PATH="${'$'}SYS_PATH" ;;
+                esac
+                export PATH
+                export TMPDIR="${'$'}HOME/tmp"
+                export SHELL="/system/bin/sh"
+                export HOSTNAME="$deviceName"
                 if [ "${'$'}(id -u 2>/dev/null || echo 1)" = "0" ]; then
                   PS1='$deviceName:# '
                 else
