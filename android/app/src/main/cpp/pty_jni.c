@@ -1,4 +1,5 @@
-#define _XOPEN_SOURCE 600
+#define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <jni.h>
@@ -75,6 +76,29 @@ static void configure_system_path(void) {
     setenv("PATH", merged, 1);
 }
 
+static void close_nonstandard_fds(void) {
+    int properties_fd = -1;
+    const char *properties_fd_string = getenv("ANDROID_PROPERTY_WORKSPACE");
+    if (properties_fd_string != NULL) {
+        properties_fd = atoi(properties_fd_string);
+    }
+    DIR *dir = opendir("/proc/self/fd");
+    if (dir != NULL) {
+        int dir_fd = dirfd(dir);
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_name[0] < '0' || entry->d_name[0] > '9') {
+                continue;
+            }
+            int fd = atoi(entry->d_name);
+            if (fd > STDERR_FILENO && fd != dir_fd && fd != properties_fd) {
+                close(fd);
+            }
+        }
+        closedir(dir);
+    }
+}
+
 JNIEXPORT jintArray JNICALL
 Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     JNIEnv *env,
@@ -91,7 +115,10 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     const char *cwd = (*env)->GetStringUTFChars(env, jCwd, NULL);
     const char *deviceName = (*env)->GetStringUTFChars(env, jDeviceName, NULL);
 
-    int masterFd = posix_openpt(O_RDWR | O_NOCTTY);
+    int masterFd = open("/dev/ptmx", O_RDWR | O_NOCTTY);
+    if (masterFd < 0) {
+        masterFd = posix_openpt(O_RDWR | O_NOCTTY);
+    }
     if (masterFd < 0) {
         int err = errno;
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
@@ -105,22 +132,9 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         return errArr;
     }
 
-    if (grantpt(masterFd) != 0 || unlockpt(masterFd) != 0) {
-        int err = errno;
-        close(masterFd);
-        (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
-        (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
-        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
-        jintArray errArr = (*env)->NewIntArray(env, 3);
-        if (errArr != NULL) {
-            jint vals[3] = { -1, -1, (jint)err };
-            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
-        }
-        return errArr;
-    }
+    fcntl(masterFd, F_SETFD, FD_CLOEXEC);
 
-    char *slaveName = ptsname(masterFd);
-    if (slaveName == NULL) {
+    if (unlockpt(masterFd) != 0) {
         int err = errno;
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
@@ -135,7 +149,21 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     }
 
     char slavePath[256];
-    snprintf(slavePath, sizeof(slavePath), "%s", slaveName);
+    memset(slavePath, 0, sizeof(slavePath));
+    errno = 0;
+    if (ptsname_r(masterFd, slavePath, sizeof(slavePath)) != 0 || slavePath[0] == '\0') {
+        int err = errno != 0 ? errno : EIO;
+        close(masterFd);
+        (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
+        (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
+        jintArray errArr = (*env)->NewIntArray(env, 3);
+        if (errArr != NULL) {
+            jint vals[3] = { -1, -1, (jint)err };
+            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
+        }
+        return errArr;
+    }
 
     struct winsize ws;
     memset(&ws, 0, sizeof(ws));
@@ -186,9 +214,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         dup2(slaveFd, STDIN_FILENO);
         dup2(slaveFd, STDOUT_FILENO);
         dup2(slaveFd, STDERR_FILENO);
-        if (slaveFd > 2) {
-            close(slaveFd);
-        }
+        close_nonstandard_fds();
 
         configure_system_path();
 
@@ -240,23 +266,8 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
             setenv("PS1", ps1Buf, 1);
             setenv("USER", "root", 1);
             setenv("LOGNAME", "root", 1);
-
-            if (envPath[0] != '\0') {
-                char suCmd[2048];
-                snprintf(
-                    suCmd,
-                    sizeof(suCmd),
-                    "export ENV='%s' HOME='%s' TMPDIR='%s' TERM='xterm-256color' SHELL='/system/bin/sh' TERMINAL_DEVICE='%s'; if [ -x /system/bin/sh ]; then exec /system/bin/sh -i; else exec sh -i; fi",
-                    envPath,
-                    cwd != NULL ? cwd : "/data",
-                    tmpDir[0] != '\0' ? tmpDir : "/data/local/tmp",
-                    dev
-                );
-                char *const args[] = { (char *)shellPath, "-c", suCmd, NULL };
-                execvp(shellPath, args);
-            }
-            char *const fallbackArgs[] = { (char *)shellPath, NULL };
-            execvp(shellPath, fallbackArgs);
+            char *const args[] = { (char *)shellPath, NULL };
+            execvp(shellPath, args);
         }
         _exit(127);
     }

@@ -252,22 +252,19 @@ class TerminalService : Service() {
             try {
                 val current = _sessionInfo.value
                 if (current.rootState == RootAccessState.ROOT_GRANTED && current.status == SessionStatus.RUNNING) {
-                    buffer.appendLocalLine("[Root shell is already active (uid=0)]")
                     return@execute
                 }
 
-                val suPath = PtyNative.findSuPath()
-                if (suPath == null) {
-                    _sessionInfo.update { it.copy(suPath = null, rootState = RootAccessState.USER_NO_SU) }
-                    buffer.appendLocalLine("[Root unavailable: no su binary found]")
-                    return@execute
-                }
-
-                _sessionInfo.update { it.copy(suPath = suPath, rootState = RootAccessState.CHECKING) }
-                buffer.appendLocalLine("[Requesting root shell via $suPath...]")
-
-                val rc = PtyNative.testSuRoot(suPath)
-                if (rc == 0) {
+                if (current.status == SessionStatus.RUNNING && masterFd >= 0) {
+                    val suCmd = PtyNative.findSuPath() ?: "su"
+                    _sessionInfo.update {
+                        it.copy(suPath = PtyNative.findSuPath() ?: it.suPath)
+                    }
+                    // Run su directly inside the active PTY so su gets a real controlling TTY
+                    // and exiting su returns seamlessly to the base sh session.
+                    writeInput("\u0015$suCmd\r")
+                } else {
+                    val suBin = PtyNative.findSuPath() ?: "su"
                     synchronized(this@TerminalService) {
                         terminateSession()
                         _sessionInfo.value = _sessionInfo.value.copy(
@@ -278,15 +275,10 @@ class TerminalService : Service() {
                         startShellSession(
                             cols = buffer.cols,
                             rows = buffer.rows,
-                            shellOverride = suPath,
+                            shellOverride = suBin,
                             elevatedRoot = true
                         )
                     }
-                } else {
-                    val runningAsFallback = _sessionInfo.value.status == SessionStatus.RUNNING
-                    _sessionInfo.update { it.copy(suPath = suPath, rootState = RootAccessState.ROOT_DENIED) }
-                    val suffix = if (runningAsFallback) " — staying in user shell" else ""
-                    buffer.appendLocalLine("[Root access denied by $suPath (exit $rc)$suffix]")
                 }
             } finally {
                 rootRequestInFlight = false
@@ -355,6 +347,7 @@ class TerminalService : Service() {
                     break
                 }
                 buffer.appendBytes(readBuf, n)
+                syncPrivilegeFromPrompt()
             }
 
             PtyNative.closeFd(fd)
@@ -408,6 +401,38 @@ class TerminalService : Service() {
         }, "com.thallyace.terminal-pty-reader-$sessionId")
         thread.isDaemon = true
         thread.start()
+    }
+
+    private fun syncPrivilegeFromPrompt() {
+        val current = _sessionInfo.value
+        if (current.status != SessionStatus.RUNNING || isElevatedSubshell) return
+        val line = buffer.getCurrentLineBeforeCursor()
+        if (line.isEmpty()) return
+
+        val device = current.deviceName
+        val isRootPrompt = line == "$device:# " ||
+            line == ":/ # " ||
+            line == "# " ||
+            ROOT_PROMPT_REGEX.matches(line)
+
+        if (isRootPrompt && current.rootState != RootAccessState.ROOT_GRANTED) {
+            _sessionInfo.update {
+                it.copy(uid = 0, rootState = RootAccessState.ROOT_GRANTED)
+            }
+            promoteToForeground()
+        } else if (line == "$device:\$ " && current.rootState == RootAccessState.ROOT_GRANTED) {
+            val baseUid = PtyNative.getUid()
+            val detectedSu = PtyNative.findSuPath()
+            val fallbackState = when {
+                baseUid == 0 -> RootAccessState.ROOT_GRANTED
+                detectedSu != null -> RootAccessState.USER_SU_AVAILABLE
+                else -> RootAccessState.USER_NO_SU
+            }
+            _sessionInfo.update {
+                it.copy(uid = baseUid, suPath = detectedSu ?: it.suPath, rootState = fallbackState)
+            }
+            promoteToForeground()
+        }
     }
 
     private fun terminateSession() {
@@ -522,5 +547,6 @@ class TerminalService : Service() {
         private const val CHANNEL_ID = "terminal_service_channel"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_STOP_SERVICE = "com.thallyace.terminal.action.STOP_SERVICE"
+        private val ROOT_PROMPT_REGEX = Regex("""^(?:[A-Za-z0-9._@-]+:)?(?:/[^\s]*)?\s?# $""")
     }
 }

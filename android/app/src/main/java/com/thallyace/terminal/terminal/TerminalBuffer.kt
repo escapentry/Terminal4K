@@ -262,6 +262,19 @@ class TerminalBuffer(
         }
     }
 
+    fun getCurrentLineBeforeCursor(): String {
+        synchronized(lock) {
+            val grid = activeGrid()
+            val r = cursorRow.coerceIn(0, rows - 1)
+            val endCol = cursorCol.coerceIn(0, cols)
+            val sb = StringBuilder(endCol)
+            for (c in 0 until endCol) {
+                sb.append(grid[r][c].ch)
+            }
+            return sb.toString()
+        }
+    }
+
     private fun appendRowText(sb: StringBuilder, row: Array<TerminalCell>) {
         var lastNonSpace = -1
         for (i in row.indices) {

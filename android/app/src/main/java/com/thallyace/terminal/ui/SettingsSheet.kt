@@ -399,7 +399,7 @@ fun SettingsSheet(
                             val rootBtnLabel = when (session.rootState) {
                                 RootAccessState.ROOT_GRANTED -> "Root shell active (${session.deviceName}:#)"
                                 RootAccessState.CHECKING -> "Checking su access..."
-                                RootAccessState.USER_NO_SU -> "Request Root (su) — no binary found"
+                                RootAccessState.USER_NO_SU -> "Elevate to Root Shell (su)"
                                 RootAccessState.ROOT_DENIED -> "Retry Root Elevation (su)"
                                 RootAccessState.USER_SU_AVAILABLE -> "Elevate to Root Shell (su)"
                             }
