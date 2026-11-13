@@ -11,7 +11,6 @@ jobs:
   build:
     name: Build Terminal (com.android.terminal)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,7 +41,7 @@ jobs:
 
       - name: Build Debug & Release APKs
         working-directory: android
-        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
