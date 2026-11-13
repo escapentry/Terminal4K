@@ -275,7 +275,6 @@ fun TerminalScreen(
             iconTint = menuIconTint,
             rootState = session.rootState,
             deviceName = session.deviceName,
-            uid = session.uid,
             isRunning = session.status == SessionStatus.RUNNING,
             onDismiss = { backMenuOpen = false },
             onShowKeyboard = {
@@ -345,7 +344,6 @@ private fun BackOptionsDialog(
     iconTint: Color,
     rootState: RootAccessState,
     deviceName: String,
-    uid: Int,
     isRunning: Boolean,
     onDismiss: () -> Unit,
     onShowKeyboard: () -> Unit,
@@ -375,12 +373,6 @@ private fun BackOptionsDialog(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = iconTint
-                )
-                Text(
-                    text = "$deviceName · ${rootState.label} · uid=${if (uid >= 0) uid else "—"}",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = theme.chromeMutedColor
                 )
 
                 HorizontalDivider(color = theme.chromeBorderColor)
@@ -436,9 +428,9 @@ private fun BackOptionsDialog(
                 HorizontalDivider(color = theme.chromeBorderColor)
 
                 Text(
-                    text = "Back does not close the shell. Run 'exit' on sh to exit.",
+                    text = "Execute \"exit\" command to close",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     color = theme.chromeMutedColor
                 )
 

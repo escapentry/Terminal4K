@@ -494,16 +494,16 @@ class TerminalService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val privLabel = if (_sessionInfo.value.rootState == RootAccessState.ROOT_GRANTED) {
-            "Root shell active"
+        val sessionMode = if (_sessionInfo.value.rootState == RootAccessState.ROOT_GRANTED || isElevatedSubshell) {
+            "root"
         } else {
-            "Persistent session running"
+            "shell"
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("$privLabel (com.thallyace.terminal)")
+            .setContentText("In session: $sessionMode")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openPending)
