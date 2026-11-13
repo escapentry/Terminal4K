@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Terminal</string>
+    <string name="notification_channel_name">Terminal Service</string>
+    <string name="notification_channel_description">Keeps the single-tab terminal shell running until exit is executed</string>
+</resources>

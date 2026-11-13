@@ -1,0 +1,6 @@
+{
+  "name": "com.android.terminal",
+  "description": "Single-tab persistent terminal emulator service (com.android.terminal) with adaptive readable monospace typography and full terminal preferences.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
