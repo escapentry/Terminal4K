@@ -22,6 +22,7 @@ function ensureRcFile() {
     'alias la="ls -A --color=auto"',
     'alias cls="clear"',
     'PS1="\\[\\e[1;36m\\]com.thallyace.terminal\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ "',
+    'if [ -z "$TERMINAL_CLEARED" ]; then export TERMINAL_CLEARED=1; clear 2>/dev/null || printf "\\033[H\\033[2J\\033[3J"; fi',
     '',
   ].join('\n');
   fs.writeFileSync(RC_FILE_PATH, rcContent, { mode: 0o600 });

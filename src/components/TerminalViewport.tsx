@@ -466,7 +466,7 @@ export const TerminalViewport = forwardRef<TerminalViewportHandle, TerminalViewp
 
     return (
       <div
-        className="relative flex-1 min-h-0 w-full overflow-hidden px-2.5 py-2 sm:px-4 sm:py-3"
+        className="relative flex-1 min-h-0 w-full overflow-hidden px-2.5 pt-1 pb-2 sm:px-3.5 sm:pt-1 sm:pb-2"
         style={{ backgroundColor: theme.xterm.background }}
         onClick={() => termRef.current?.focus()}
       >

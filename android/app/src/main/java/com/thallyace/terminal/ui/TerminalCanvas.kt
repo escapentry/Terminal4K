@@ -599,7 +599,7 @@ fun TerminalCanvas(
                     8f,
                     ctx.resources.displayMetrics
                 ).roundToInt()
-                setPadding(padPx, padPx / 2, padPx, padPx / 2)
+                setPadding(padPx, padPx / 4, padPx, padPx / 2)
                 this.onSendBytes = onSendBytes
                 this.onGridResize = onGridResize
                 this.onConsumeModifiers = onConsumeModifiers

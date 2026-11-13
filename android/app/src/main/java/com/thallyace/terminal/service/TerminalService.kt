@@ -127,6 +127,10 @@ class TerminalService : Service() {
             }
 
             val cwd = filesDir.absolutePath
+            ensureShellInitScript(cwd)
+            if (!elevatedRoot && buffer.cursorRow == 0 && buffer.cursorCol == 0) {
+                buffer.clearAll()
+            }
             val spawned = PtyNative.spawnShell(shellPath, cwd, rows, cols, interactiveFlag)
 
             if (spawned == null || spawned.size < 2 || spawned[0] < 0) {
@@ -171,23 +175,23 @@ class TerminalService : Service() {
                 finalShExited = false
             )
 
-            buffer.appendLocalLine("com.thallyace.terminal · Persistent Terminal Service")
-            buffer.appendLocalLine("Shell: $shellPath (PID $childPid) · UID: $effectiveUid · ${rootState.label}")
-            when (rootState) {
-                RootAccessState.ROOT_GRANTED -> {
-                    buffer.appendLocalLine("[Root shell active (uid=0)]")
-                }
-                RootAccessState.USER_SU_AVAILABLE -> {
-                    buffer.appendLocalLine("[su binary ready: $detectedSu — tap 'su' in top bar to elevate]")
-                }
-                RootAccessState.USER_NO_SU -> {
-                    buffer.appendLocalLine("[Standard user shell — no su binary detected on device]")
-                }
-                else -> Unit
-            }
-
             promoteToForeground()
             startReaderLoop(masterFd, childPid, sessionId)
+        }
+    }
+
+    private fun ensureShellInitScript(cwd: String) {
+        try {
+            val rcFile = File(cwd, ".shrc")
+            val script = """
+                if [ -z "${'$'}TERMINAL_CLEARED" ]; then
+                  export TERMINAL_CLEARED=1
+                  clear 2>/dev/null || printf '\033[H\033[2J\033[3J'
+                fi
+                
+            """.trimIndent()
+            rcFile.writeText(script, StandardCharsets.UTF_8)
+        } catch (_: Exception) {
         }
     }
 

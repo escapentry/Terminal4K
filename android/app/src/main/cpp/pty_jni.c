@@ -143,6 +143,9 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         if (cwd != NULL && cwd[0] != '\0') {
             chdir(cwd);
             setenv("HOME", cwd, 1);
+            char envPath[512];
+            snprintf(envPath, sizeof(envPath), "%s/.shrc", cwd);
+            setenv("ENV", envPath, 1);
         }
 
         setenv("TERM", "xterm-256color", 1);

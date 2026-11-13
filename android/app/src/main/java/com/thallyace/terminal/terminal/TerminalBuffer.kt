@@ -149,13 +149,39 @@ class TerminalBuffer(
         val safeRows = max(2, newRows)
         synchronized(lock) {
             if (safeCols == cols && safeRows == rows) return
-            mainGrid = resizeGrid(mainGrid, cols, rows, safeCols, safeRows)
-            altGrid = altGrid?.let { resizeGrid(it, cols, rows, safeCols, safeRows) }
+            val scrollOff = if (safeRows < rows) max(0, cursorRow - (safeRows - 1)) else 0
+            if (!usingAltScreen && scrollOff > 0) {
+                for (r in 0 until scrollOff) {
+                    val archived = Array(cols) { idx -> TerminalCell().apply { copyFrom(mainGrid[r][idx]) } }
+                    scrollback.addLast(archived)
+                    while (scrollback.size > maxScrollback) {
+                        scrollback.removeFirst()
+                    }
+                }
+            }
+            mainGrid = resizeGrid(
+                oldGrid = mainGrid,
+                oldCols = cols,
+                oldRows = rows,
+                newCols = safeCols,
+                newRows = safeRows,
+                rowOffset = if (!usingAltScreen) scrollOff else 0
+            )
+            altGrid = altGrid?.let {
+                resizeGrid(
+                    oldGrid = it,
+                    oldCols = cols,
+                    oldRows = rows,
+                    newCols = safeCols,
+                    newRows = safeRows,
+                    rowOffset = if (usingAltScreen) scrollOff else 0
+                )
+            }
             cols = safeCols
             rows = safeRows
             scrollTop = 0
             scrollBottom = rows - 1
-            cursorRow = cursorRow.coerceIn(0, rows - 1)
+            cursorRow = (cursorRow - scrollOff).coerceIn(0, rows - 1)
             cursorCol = cursorCol.coerceIn(0, cols - 1)
         }
         onUpdated()
@@ -166,12 +192,13 @@ class TerminalBuffer(
         oldCols: Int,
         oldRows: Int,
         newCols: Int,
-        newRows: Int
+        newRows: Int,
+        rowOffset: Int
     ): Array<Array<TerminalCell>> {
         val newGrid = createGrid(newCols, newRows)
-        val copyRows = min(oldRows, newRows)
+        val availableRows = max(0, oldRows - rowOffset)
+        val copyRows = min(availableRows, newRows)
         val copyCols = min(oldCols, newCols)
-        val rowOffset = max(0, oldRows - newRows)
         for (r in 0 until copyRows) {
             for (c in 0 until copyCols) {
                 newGrid[r][c].copyFrom(oldGrid[r + rowOffset][c])
