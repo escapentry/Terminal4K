@@ -43,7 +43,7 @@ export function ExtraKeysBar({
 }: ExtraKeysBarProps) {
   return (
     <div
-      className="shrink-0 border-t px-2 py-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar select-none"
+      className="shrink-0 border-t px-2 py-1.5 grid grid-cols-5 sm:grid-cols-7 gap-1.5 select-none"
       style={{
         backgroundColor: theme.chromeSurface,
         borderColor: theme.chromeBorder,
@@ -69,7 +69,7 @@ export function ExtraKeysBar({
                 onSendSequence(key.sequence);
               }
             }}
-            className="min-h-[40px] min-w-[42px] px-2.5 rounded-md font-mono text-xs font-medium whitespace-nowrap shrink-0 flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 cursor-pointer"
+            className="min-h-[36px] px-1.5 rounded-md font-mono text-xs font-medium whitespace-nowrap flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 cursor-pointer"
             style={{
               backgroundColor: isArmed ? theme.accent : theme.chromeBg,
               color: isArmed ? theme.accentText : theme.chromeText,

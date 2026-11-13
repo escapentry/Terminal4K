@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -68,6 +69,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val activeService = terminalService
             if (activeService == null) {
+                BackHandler(enabled = true) {
+                    // Ignore Back; terminal only exits on final sh exit command
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -92,6 +96,9 @@ class MainActivity : ComponentActivity() {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
                         controller.isAppearanceLightStatusBars = isLight
                         controller.isAppearanceLightNavigationBars = isLight
+                    },
+                    onFinalShellExit = {
+                        finish()
                     }
                 )
             }

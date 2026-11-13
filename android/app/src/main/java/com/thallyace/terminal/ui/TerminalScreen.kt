@@ -4,23 +4,25 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -62,6 +64,7 @@ import com.thallyace.terminal.model.RootAccessState
 import com.thallyace.terminal.model.SessionStatus
 import com.thallyace.terminal.model.TerminalSettings
 import com.thallyace.terminal.model.TerminalSettingsRepository
+import com.thallyace.terminal.model.TerminalTheme
 import com.thallyace.terminal.model.TerminalThemes
 import com.thallyace.terminal.service.TerminalService
 import com.thallyace.terminal.terminal.FontAutoSizer
@@ -70,7 +73,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun TerminalScreen(
     service: TerminalService,
-    onThemeChanged: (isLight: Boolean, barColor: Int) -> Unit
+    onThemeChanged: (isLight: Boolean, barColor: Int) -> Unit,
+    onFinalShellExit: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -88,6 +92,19 @@ fun TerminalScreen(
     val session by service.sessionInfo.collectAsState()
     val revision by service.bufferRevision.collectAsState()
     val theme = remember(settings.themeId) { TerminalThemes.byId(settings.themeId) }
+
+    // Ignore Back to exit; only exit when final exit command runs on sh binary
+    BackHandler(enabled = true) {
+        if (settingsOpen) {
+            settingsOpen = false
+        }
+    }
+
+    LaunchedEffect(session.finalShExited) {
+        if (session.finalShExited) {
+            onFinalShellExit()
+        }
+    }
 
     LaunchedEffect(theme.id) {
         onThemeChanged(theme.isLight, theme.chromeSurface)
@@ -161,51 +178,53 @@ fun TerminalScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.chromeBgColor)
-            .statusBarsPadding()
-            .navigationBarsPadding()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
             .imePadding()
     ) {
-        // Compact Top Bar
+        // High-visibility Top Bar with guaranteed visible action icons
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .heightIn(min = 48.dp)
                 .background(theme.chromeSurfaceColor)
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Terminal,
                     contentDescription = null,
                     tint = theme.accentColor,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Text(
                             text = "Terminal",
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = theme.chromeTextColor,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
                             text = rootBadgeText,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
                             color = rootColor,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     val statusMeta = if (session.status == SessionStatus.EXITED) {
@@ -226,54 +245,55 @@ fun TerminalScreen(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Surface(
                     onClick = { service.requestRootShell() },
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = if (session.rootState == RootAccessState.ROOT_GRANTED) {
-                        rootColor.copy(alpha = 0.16f)
+                        rootColor.copy(alpha = 0.18f)
                     } else {
-                        Color.Transparent
+                        theme.chromeBgColor
                     },
                     border = BorderStroke(
                         1.dp,
                         if (session.rootState == RootAccessState.ROOT_GRANTED ||
                             session.rootState == RootAccessState.USER_SU_AVAILABLE
                         ) {
-                            rootColor.copy(alpha = 0.6f)
+                            rootColor.copy(alpha = 0.7f)
                         } else {
                             theme.chromeBorderColor
                         }
                     ),
-                    modifier = Modifier.heightIn(min = 32.dp)
+                    modifier = Modifier.size(width = 32.dp, height = 32.dp)
                 ) {
-                    Box(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = if (session.rootState == RootAccessState.ROOT_GRANTED) "#" else "su",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = rootColor
+                            color = rootColor,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
-                TopBarIconAction(
+                TopBarIconButton(
+                    theme = theme,
                     onClick = { surfaceViewRef?.showSoftKeyboard() }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Keyboard,
                         contentDescription = "Show keyboard",
                         tint = theme.chromeTextColor,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
-                TopBarIconAction(
+                TopBarIconButton(
+                    theme = theme,
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val text = service.buffer.dumpText()
@@ -285,12 +305,13 @@ fun TerminalScreen(
                     Icon(
                         imageVector = Icons.Filled.ContentCopy,
                         contentDescription = "Copy output",
-                        tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(17.dp)
+                        tint = theme.chromeTextColor,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
 
-                TopBarIconAction(
+                TopBarIconButton(
+                    theme = theme,
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val primary = clipboard?.primaryClip
@@ -307,29 +328,32 @@ fun TerminalScreen(
                     Icon(
                         imageVector = Icons.Filled.ContentPaste,
                         contentDescription = "Paste",
-                        tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(17.dp)
+                        tint = theme.chromeTextColor,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
 
-                TopBarIconAction(
+                TopBarIconButton(
+                    theme = theme,
                     onClick = { service.buffer.clearAll() }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.DeleteSweep,
                         contentDescription = "Clear",
-                        tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(18.dp)
+                        tint = theme.chromeTextColor,
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
-                TopBarIconAction(
+                TopBarIconButton(
+                    theme = theme,
+                    accentBorder = true,
                     onClick = { settingsOpen = true }
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Settings,
                         contentDescription = "Settings",
-                        tint = theme.chromeTextColor,
+                        tint = theme.accentColor,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -464,16 +488,24 @@ fun TerminalScreen(
 }
 
 @Composable
-private fun TopBarIconAction(
+private fun TopBarIconButton(
+    theme: TerminalTheme,
+    accentBorder: Boolean = false,
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(6.dp),
+        color = theme.chromeBgColor,
+        border = BorderStroke(
+            1.dp,
+            if (accentBorder) theme.accentColor.copy(alpha = 0.6f) else theme.chromeBorderColor
+        ),
+        modifier = Modifier.size(32.dp)
     ) {
-        content()
+        Box(contentAlignment = Alignment.Center) {
+            content()
+        }
     }
 }

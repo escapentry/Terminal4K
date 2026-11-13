@@ -70,7 +70,8 @@ data class SessionInfo(
     val shellPath: String = "/system/bin/sh",
     val uid: Int = -1,
     val suPath: String? = null,
-    val rootState: RootAccessState = RootAccessState.CHECKING
+    val rootState: RootAccessState = RootAccessState.CHECKING,
+    val finalShExited: Boolean = false
 )
 
 data class ComputedFontMetrics(

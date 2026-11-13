@@ -54,6 +54,9 @@ class TerminalService : Service() {
     private var activeSessionId: Long = 0L
 
     @Volatile
+    private var isElevatedSubshell: Boolean = false
+
+    @Volatile
     private var rootRequestInFlight: Boolean = false
 
     private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -139,7 +142,8 @@ class TerminalService : Service() {
                     shellPath = shellPath,
                     uid = uid,
                     suPath = detectedSu,
-                    rootState = rootState
+                    rootState = rootState,
+                    finalShExited = false
                 )
                 buffer.appendLocalLine("[Failed to start PTY shell: $shellPath (errno=$errNo)]")
                 return
@@ -149,6 +153,7 @@ class TerminalService : Service() {
             val sessionId = activeSessionId
             masterFd = spawned[0]
             childPid = spawned[1]
+            isElevatedSubshell = elevatedRoot
             val effectiveUid = if (elevatedRoot) 0 else uid
 
             _sessionInfo.value = SessionInfo(
@@ -162,7 +167,8 @@ class TerminalService : Service() {
                 shellPath = shellPath,
                 uid = effectiveUid,
                 suPath = detectedSu,
-                rootState = rootState
+                rootState = rootState,
+                finalShExited = false
             )
 
             buffer.appendLocalLine("com.thallyace.terminal · Persistent Terminal Service")
@@ -237,11 +243,13 @@ class TerminalService : Service() {
     fun restartSession() {
         synchronized(this) {
             terminateSession()
+            isElevatedSubshell = false
             buffer.clearAll()
             _sessionInfo.value = _sessionInfo.value.copy(
                 status = SessionStatus.CONNECTING,
                 exitCode = null,
-                endedAtMillis = null
+                endedAtMillis = null,
+                finalShExited = false
             )
             startShellSession(buffer.cols, buffer.rows)
         }
@@ -298,28 +306,50 @@ class TerminalService : Service() {
             PtyNative.closeFd(fd)
             val exitCode = PtyNative.waitForChild(pid)
 
-            val shouldMarkExited = synchronized(this@TerminalService) {
+            var wasElevatedSubshell = false
+            val activeMatch = synchronized(this@TerminalService) {
                 if (masterFd == fd) {
                     masterFd = -1
                 }
                 if (childPid == pid) {
                     childPid = -1
                 }
-                activeSessionId == sessionId && _sessionInfo.value.status == SessionStatus.RUNNING
+                if (activeSessionId == sessionId && _sessionInfo.value.status == SessionStatus.RUNNING) {
+                    wasElevatedSubshell = isElevatedSubshell
+                    true
+                } else {
+                    false
+                }
             }
 
-            if (shouldMarkExited) {
-                _sessionInfo.update {
-                    it.copy(
-                        status = SessionStatus.EXITED,
-                        exitCode = exitCode,
-                        endedAtMillis = System.currentTimeMillis()
-                    )
+            if (activeMatch) {
+                if (wasElevatedSubshell) {
+                    synchronized(this@TerminalService) {
+                        isElevatedSubshell = false
+                        _sessionInfo.value = _sessionInfo.value.copy(
+                            status = SessionStatus.CONNECTING,
+                            exitCode = null,
+                            endedAtMillis = null,
+                            finalShExited = false
+                        )
+                        buffer.appendLocalLine("")
+                        buffer.appendLocalLine("[Root shell exited (code $exitCode) — returning to user shell]")
+                        startShellSession(buffer.cols, buffer.rows)
+                    }
+                } else {
+                    _sessionInfo.update {
+                        it.copy(
+                            status = SessionStatus.EXITED,
+                            exitCode = exitCode,
+                            endedAtMillis = System.currentTimeMillis(),
+                            finalShExited = true
+                        )
+                    }
+                    buffer.appendLocalLine("")
+                    buffer.appendLocalLine("[Process completed (code $exitCode)]")
+                    stopForegroundCompat()
+                    stopSelf()
                 }
-                buffer.appendLocalLine("")
-                buffer.appendLocalLine("[Process completed (code $exitCode) — press Enter to start new session]")
-                stopForegroundCompat()
-                stopSelf()
             }
         }, "com.thallyace.terminal-pty-reader-$sessionId")
         thread.isDaemon = true
