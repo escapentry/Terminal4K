@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.io.File
 import java.nio.charset.StandardCharsets
 
@@ -58,7 +59,7 @@ class TerminalService : Service() {
         maxScrollback = 5000,
         onResponse = { bytes -> writeInput(bytes) },
         onBell = { _bellEvents.tryEmit(Unit) },
-        onUpdated = { _bufferRevision.value = _bufferRevision.value + 1L }
+        onUpdated = { _bufferRevision.update { it + 1L } }
     )
 
     override fun onCreate() {

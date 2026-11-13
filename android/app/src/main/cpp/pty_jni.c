@@ -74,11 +74,15 @@ Java_com_android_terminal_pty_PtyNative_spawnShell(
             _exit(126);
         }
 
+#ifdef TIOCSCTTY
         ioctl(slaveFd, TIOCSCTTY, 0);
+#endif
 
         struct termios tios;
         if (tcgetattr(slaveFd, &tios) == 0) {
+#ifdef IUTF8
             tios.c_iflag |= IUTF8;
+#endif
             tcsetattr(slaveFd, TCSANOW, &tios);
         }
 

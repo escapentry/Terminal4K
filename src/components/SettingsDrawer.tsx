@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RotateCcw, Terminal, X } from 'lucide-react';
+import { Copy, Download, RotateCcw, Terminal, X } from 'lucide-react';
 import type {
   BackspaceMode,
   BellMode,
@@ -51,6 +51,20 @@ export function SettingsDrawer({
   onRestartService,
 }: SettingsDrawerProps) {
   const [, setTick] = useState(0);
+  const [workflowCopied, setWorkflowCopied] = useState(false);
+
+  const handleCopyWorkflow = async () => {
+    try {
+      const res = await fetch('/api/android/workflow');
+      if (!res.ok) return;
+      const yaml = await res.text();
+      await navigator.clipboard.writeText(yaml);
+      setWorkflowCopied(true);
+      setTimeout(() => setWorkflowCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -549,6 +563,46 @@ export function SettingsDrawer({
             >
               Reset settings to defaults
             </button>
+          </section>
+
+          <hr style={{ borderColor: theme.chromeBorder }} />
+
+          {/* 5. Android APK & GitHub Actions Export */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold tracking-wide" style={{ color: theme.chromeMuted }}>
+              Android Source & GitHub Workflow
+            </h3>
+            <p className="text-xs leading-relaxed" style={{ color: theme.chromeMuted }}>
+              Includes the native Android project (<span className="font-mono">com.android.terminal</span>) and{' '}
+              <span className="font-mono">.github/workflows/build-android.yml</span> for GitHub Actions APK builds.
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              <a
+                href="/api/android/download-source"
+                download="Terminal-com.android.terminal-github.zip"
+                className="min-h-[42px] px-3 rounded-md text-xs font-medium whitespace-nowrap flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: theme.accent,
+                  color: theme.accentText,
+                }}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Android + Workflow (.zip)</span>
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyWorkflow}
+                className="min-h-[40px] px-3 rounded-md text-xs font-medium whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer"
+                style={{
+                  backgroundColor: theme.chromeBg,
+                  border: `1px solid ${theme.chromeBorder}`,
+                  color: theme.chromeText,
+                }}
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{workflowCopied ? 'Copied build-android.yml' : 'Copy Workflow YAML'}</span>
+              </button>
+            </div>
           </section>
         </div>
       </aside>

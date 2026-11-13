@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ClipboardPaste, Copy, Eraser, RotateCcw, Settings, TerminalSquare } from 'lucide-react';
+import { ClipboardPaste, Copy, Download, Eraser, RotateCcw, Settings, TerminalSquare } from 'lucide-react';
 import { ExtraKeysBar } from './components/ExtraKeysBar';
 import { SettingsDrawer } from './components/SettingsDrawer';
 import { TerminalViewport, type TerminalViewportHandle } from './components/TerminalViewport';
@@ -234,6 +234,18 @@ export default function App() {
             <Eraser className="w-4 h-4" />
             <span className="hidden md:inline">Clear</span>
           </button>
+
+          <a
+            href="/api/android/download-source"
+            download="Terminal-com.android.terminal-github.zip"
+            title="Download Android source and GitHub workflow (.zip)"
+            aria-label="Download Android source and GitHub workflow"
+            className="min-h-[38px] min-w-[38px] px-2.5 rounded-md text-xs font-medium whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors"
+            style={{ color: theme.chromeMuted }}
+          >
+            <Download className="w-4 h-4" />
+            <span className="hidden lg:inline">Android ZIP</span>
+          </a>
 
           <button
             type="button"

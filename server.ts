@@ -341,6 +341,64 @@ async function startServer() {
     res.json({ ok: true });
   });
 
+  app.get('/api/android/workflow', (_req, res) => {
+    const workflowPath = path.resolve(process.cwd(), '.github/workflows/build-android.yml');
+    if (!fs.existsSync(workflowPath)) {
+      res.status(404).send('Workflow file not found');
+      return;
+    }
+    res.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+    res.sendFile(workflowPath);
+  });
+
+  app.get('/api/android/download-source', (_req, res) => {
+    const rootDir = process.cwd();
+    const pyScript = [
+      'import io, os, sys, zipfile',
+      'root = sys.argv[1]',
+      'buf = io.BytesIO()',
+      'exclude_dirs = {".gradle", "build", ".cxx", "node_modules", "dist"}',
+      'with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:',
+      '    wf = os.path.join(root, ".github", "workflows", "build-android.yml")',
+      '    if os.path.isfile(wf):',
+      '        zf.write(wf, ".github/workflows/build-android.yml")',
+      '    readme = os.path.join(root, "README_ANDROID.md")',
+      '    if os.path.isfile(readme):',
+      '        zf.write(readme, "README_ANDROID.md")',
+      '    android_dir = os.path.join(root, "android")',
+      '    if os.path.isdir(android_dir):',
+      '        for cur, dirs, files in os.walk(android_dir):',
+      '            dirs[:] = [d for d in dirs if d not in exclude_dirs]',
+      '            for fn in files:',
+      '                if fn == "local.properties": continue',
+      '                full = os.path.join(cur, fn)',
+      '                rel = os.path.relpath(full, root)',
+      '                zf.write(full, rel)',
+      'sys.stdout.buffer.write(buf.getvalue())',
+    ].join('\n');
+
+    const child = spawn('python3', ['-c', pyScript, rootDir], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const chunks: Buffer[] = [];
+    let errText = '';
+    child.stdout.on('data', (d: Buffer) => chunks.push(d));
+    child.stderr.on('data', (d: Buffer) => {
+      errText += d.toString('utf8');
+    });
+    child.on('close', (code) => {
+      if (code !== 0) {
+        res.status(500).json({ error: errText || 'Failed to package Android source archive' });
+        return;
+      }
+      const zipBuffer = Buffer.concat(chunks);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="Terminal-com.android.terminal-github.zip"');
+      res.setHeader('Content-Length', String(zipBuffer.length));
+      res.send(zipBuffer);
+    });
+  });
+
   const distDir = path.resolve(process.cwd(), 'dist');
   const isProd = process.env.NODE_ENV === 'production' || (process.env.NODE_ENV !== 'development' && fs.existsSync(path.join(distDir, 'index.html')));
 
