@@ -127,11 +127,12 @@ class TerminalService : Service() {
             }
 
             val cwd = filesDir.absolutePath
-            ensureShellInitScript(cwd)
+            val deviceName = resolveDevicePromptName()
+            ensureShellInitScript(cwd, deviceName)
             if (!elevatedRoot && buffer.cursorRow == 0 && buffer.cursorCol == 0) {
                 buffer.clearAll()
             }
-            val spawned = PtyNative.spawnShell(shellPath, cwd, rows, cols, interactiveFlag)
+            val spawned = PtyNative.spawnShell(shellPath, cwd, deviceName, rows, cols, interactiveFlag)
 
             if (spawned == null || spawned.size < 2 || spawned[0] < 0) {
                 val errNo = spawned?.getOrNull(2) ?: -1
@@ -147,7 +148,8 @@ class TerminalService : Service() {
                     uid = uid,
                     suPath = detectedSu,
                     rootState = rootState,
-                    finalShExited = false
+                    finalShExited = false,
+                    deviceName = deviceName
                 )
                 buffer.appendLocalLine("[Failed to start PTY shell: $shellPath (errno=$errNo)]")
                 return
@@ -172,7 +174,8 @@ class TerminalService : Service() {
                 uid = effectiveUid,
                 suPath = detectedSu,
                 rootState = rootState,
-                finalShExited = false
+                finalShExited = false,
+                deviceName = deviceName
             )
 
             promoteToForeground()
@@ -180,10 +183,34 @@ class TerminalService : Service() {
         }
     }
 
-    private fun ensureShellInitScript(cwd: String) {
+    private fun resolveDevicePromptName(): String {
+        val manufacturer = Build.MANUFACTURER?.trim().orEmpty()
+        val brand = Build.BRAND?.trim().orEmpty()
+        var model = Build.MODEL?.trim().orEmpty()
+        if (model.isEmpty()) {
+            model = Build.DEVICE?.trim().orEmpty()
+        }
+        if (manufacturer.isNotEmpty() && model.startsWith("$manufacturer ", ignoreCase = true)) {
+            model = model.substring(manufacturer.length).trim()
+        } else if (brand.isNotEmpty() && model.startsWith("$brand ", ignoreCase = true)) {
+            model = model.substring(brand.length).trim()
+        }
+        val cleaned = model
+            .replace(Regex("[^A-Za-z0-9._-]"), "")
+            .ifEmpty { "android" }
+        return cleaned.take(16)
+    }
+
+    private fun ensureShellInitScript(cwd: String, deviceName: String) {
         try {
             val rcFile = File(cwd, ".shrc")
             val script = """
+                if [ "${'$'}(id -u 2>/dev/null || echo 1)" = "0" ]; then
+                  PS1='$deviceName:# '
+                else
+                  PS1='$deviceName:$ '
+                fi
+                export PS1
                 if [ -z "${'$'}TERMINAL_CLEARED" ]; then
                   export TERMINAL_CLEARED=1
                   clear 2>/dev/null || printf '\033[H\033[2J\033[3J'
@@ -192,6 +219,13 @@ class TerminalService : Service() {
             """.trimIndent()
             rcFile.writeText(script, StandardCharsets.UTF_8)
         } catch (_: Exception) {
+        }
+    }
+
+    fun clearScreenAndPrompt() {
+        buffer.clearAll()
+        if (_sessionInfo.value.status == SessionStatus.RUNNING && masterFd >= 0) {
+            writeInput("\r")
         }
     }
 

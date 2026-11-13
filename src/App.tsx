@@ -217,7 +217,7 @@ export default function App() {
             title="Paste from clipboard"
             aria-label="Paste from clipboard"
             className="min-h-[38px] min-w-[38px] px-2.5 rounded-md text-xs font-medium whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer"
-            style={{ color: theme.chromeMuted }}
+            style={{ color: theme.chromeText }}
           >
             <ClipboardPaste className="w-4 h-4" />
             <span className="hidden md:inline">Paste</span>
@@ -229,7 +229,7 @@ export default function App() {
             title="Clear terminal scrollback"
             aria-label="Clear terminal scrollback"
             className="min-h-[38px] min-w-[38px] px-2.5 rounded-md text-xs font-medium whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer"
-            style={{ color: theme.chromeMuted }}
+            style={{ color: theme.chromeText }}
           >
             <Eraser className="w-4 h-4" />
             <span className="hidden md:inline">Clear</span>
@@ -241,7 +241,7 @@ export default function App() {
             title="Download Android source and GitHub workflow (.zip)"
             aria-label="Download Android source and GitHub workflow"
             className="min-h-[38px] min-w-[38px] px-2.5 rounded-md text-xs font-medium whitespace-nowrap shrink-0 flex items-center gap-1.5 transition-colors"
-            style={{ color: theme.chromeMuted }}
+            style={{ color: theme.chromeText }}
           >
             <Download className="w-4 h-4" />
             <span className="hidden lg:inline">Android ZIP</span>

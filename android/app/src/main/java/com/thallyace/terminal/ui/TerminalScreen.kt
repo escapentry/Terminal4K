@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -36,6 +41,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.thallyace.terminal.model.BellMode
 import com.thallyace.terminal.model.ExtraKeysMode
 import com.thallyace.terminal.model.RootAccessState
@@ -84,6 +92,7 @@ fun TerminalScreen(
     val settingsRepo = remember { TerminalSettingsRepository(context) }
     var settings by remember { mutableStateOf(settingsRepo.load()) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var backMenuOpen by remember { mutableStateOf(false) }
     var ctrlArmed by remember { mutableStateOf(false) }
     var altArmed by remember { mutableStateOf(false) }
     var bellFlash by remember { mutableStateOf(false) }
@@ -93,10 +102,13 @@ fun TerminalScreen(
     val revision by service.bufferRevision.collectAsState()
     val theme = remember(settings.themeId) { TerminalThemes.byId(settings.themeId) }
 
-    // Ignore Back to exit; only exit when final exit command runs on sh binary
+    // Pressing Back brings up the Options Menu list instead of exiting;
+    // exiting happens only on final exit command in the sh binary.
     BackHandler(enabled = true) {
-        if (settingsOpen) {
-            settingsOpen = false
+        when {
+            settingsOpen -> settingsOpen = false
+            backMenuOpen -> backMenuOpen = false
+            else -> backMenuOpen = true
         }
     }
 
@@ -158,13 +170,13 @@ fun TerminalScreen(
         ExtraKeysMode.AUTO -> isTouchFormFactor
     }
 
-    val shellShortName = session.shellPath.substringAfterLast('/').ifEmpty { "sh" }
+    val topBarIconTint = if (theme.isLight) Color(0xFF0F172A) else Color.White
     val rootColor = when (session.rootState) {
         RootAccessState.ROOT_GRANTED -> if (theme.isLight) Color(0xFF15803D) else Color(0xFF4ADE80)
         RootAccessState.ROOT_DENIED -> if (theme.isLight) Color(0xFFB91C1C) else Color(0xFFF87171)
         RootAccessState.USER_SU_AVAILABLE -> theme.accentColor
         RootAccessState.CHECKING -> if (theme.isLight) Color(0xFFB45309) else Color(0xFFFBBF24)
-        RootAccessState.USER_NO_SU -> theme.chromeMutedColor
+        RootAccessState.USER_NO_SU -> if (theme.isLight) Color(0xFF475569) else Color.White.copy(alpha = 0.72f)
     }
     val rootBadgeText = when (session.rootState) {
         RootAccessState.ROOT_GRANTED -> "# root"
@@ -182,37 +194,37 @@ fun TerminalScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
             .imePadding()
     ) {
-        // High-visibility Top Bar with guaranteed visible action icons
+        // Slim Title Bar with pure white visible icons
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp)
+                .heightIn(min = 44.dp)
                 .background(theme.chromeSurfaceColor)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.Terminal,
                     contentDescription = null,
-                    tint = theme.accentColor,
-                    modifier = Modifier.size(16.dp)
+                    tint = topBarIconTint,
+                    modifier = Modifier.size(18.dp)
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "Terminal",
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = theme.chromeTextColor,
+                            color = topBarIconTint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
@@ -220,7 +232,7 @@ fun TerminalScreen(
                         Text(
                             text = rootBadgeText,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = rootColor,
                             maxLines = 1,
@@ -230,7 +242,7 @@ fun TerminalScreen(
                     val statusMeta = if (session.status == SessionStatus.EXITED) {
                         "exited (${session.exitCode ?: 0})"
                     } else {
-                        "$shellShortName · ${session.cols}×${session.rows} · ${computedMetrics.fontSizeSp}sp"
+                        "${session.deviceName} · ${session.cols}×${session.rows} · ${computedMetrics.fontSizeSp}sp"
                     }
                     Text(
                         text = statusMeta,
@@ -247,114 +259,48 @@ fun TerminalScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Surface(
-                    onClick = { service.requestRootShell() },
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (session.rootState == RootAccessState.ROOT_GRANTED) {
-                        rootColor.copy(alpha = 0.18f)
-                    } else {
-                        theme.chromeBgColor
-                    },
-                    border = BorderStroke(
-                        1.dp,
-                        if (session.rootState == RootAccessState.ROOT_GRANTED ||
-                            session.rootState == RootAccessState.USER_SU_AVAILABLE
-                        ) {
-                            rootColor.copy(alpha = 0.7f)
-                        } else {
-                            theme.chromeBorderColor
-                        }
-                    ),
-                    modifier = Modifier.size(width = 32.dp, height = 32.dp)
+                Box(
+                    modifier = Modifier
+                        .size(width = 36.dp, height = 36.dp)
+                        .clickable { service.requestRootShell() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = if (session.rootState == RootAccessState.ROOT_GRANTED) "#" else "su",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = rootColor,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                    Text(
+                        text = if (session.rootState == RootAccessState.ROOT_GRANTED) "#" else "su",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (session.rootState == RootAccessState.ROOT_GRANTED) rootColor else topBarIconTint,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
 
-                TopBarIconButton(
-                    theme = theme,
-                    onClick = { surfaceViewRef?.showSoftKeyboard() }
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clickable { surfaceViewRef?.showSoftKeyboard() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Keyboard,
                         contentDescription = "Show keyboard",
-                        tint = theme.chromeTextColor,
-                        modifier = Modifier.size(17.dp)
+                        tint = topBarIconTint,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                TopBarIconButton(
-                    theme = theme,
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val text = service.buffer.dumpText()
-                        if (text.isNotEmpty()) {
-                            clipboard?.setPrimaryClip(ClipData.newPlainText("Terminal output", text))
-                        }
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ContentCopy,
-                        contentDescription = "Copy output",
-                        tint = theme.chromeTextColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                TopBarIconButton(
-                    theme = theme,
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val primary = clipboard?.primaryClip
-                        val clip = if (primary != null && primary.itemCount > 0) {
-                            primary.getItemAt(0)?.coerceToText(context)?.toString()
-                        } else {
-                            null
-                        }
-                        if (!clip.isNullOrEmpty() && session.status == SessionStatus.RUNNING) {
-                            service.writeInput(clip)
-                        }
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ContentPaste,
-                        contentDescription = "Paste",
-                        tint = theme.chromeTextColor,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                TopBarIconButton(
-                    theme = theme,
-                    onClick = { service.buffer.clearAll() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.DeleteSweep,
-                        contentDescription = "Clear",
-                        tint = theme.chromeTextColor,
-                        modifier = Modifier.size(17.dp)
-                    )
-                }
-
-                TopBarIconButton(
-                    theme = theme,
-                    accentBorder = true,
-                    onClick = { settingsOpen = true }
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clickable { settingsOpen = true },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Settings,
                         contentDescription = "Settings",
-                        tint = theme.accentColor,
-                        modifier = Modifier.size(18.dp)
+                        tint = topBarIconTint,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -456,6 +402,63 @@ fun TerminalScreen(
         }
     }
 
+    if (backMenuOpen) {
+        BackOptionsDialog(
+            theme = theme,
+            iconTint = topBarIconTint,
+            rootState = session.rootState,
+            deviceName = session.deviceName,
+            uid = session.uid,
+            isRunning = session.status == SessionStatus.RUNNING,
+            onDismiss = { backMenuOpen = false },
+            onShowKeyboard = {
+                backMenuOpen = false
+                surfaceViewRef?.showSoftKeyboard()
+            },
+            onRequestRoot = {
+                backMenuOpen = false
+                service.requestRootShell()
+            },
+            onOpenSettings = {
+                backMenuOpen = false
+                settingsOpen = true
+            },
+            onCopyOutput = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                val text = service.buffer.dumpText()
+                if (text.isNotEmpty()) {
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Terminal output", text))
+                }
+                backMenuOpen = false
+            },
+            onPaste = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                val primary = clipboard?.primaryClip
+                val clip = if (primary != null && primary.itemCount > 0) {
+                    primary.getItemAt(0)?.coerceToText(context)?.toString()
+                } else {
+                    null
+                }
+                if (!clip.isNullOrEmpty() && session.status == SessionStatus.RUNNING) {
+                    service.writeInput(clip)
+                }
+                backMenuOpen = false
+            },
+            onClear = {
+                backMenuOpen = false
+                service.clearScreenAndPrompt()
+            },
+            onSigint = {
+                backMenuOpen = false
+                service.sendSigint()
+            },
+            onRestart = {
+                backMenuOpen = false
+                service.restartSession()
+            }
+        )
+    }
+
     if (settingsOpen) {
         SettingsSheet(
             settings = settings,
@@ -488,24 +491,178 @@ fun TerminalScreen(
 }
 
 @Composable
-private fun TopBarIconButton(
+private fun BackOptionsDialog(
     theme: TerminalTheme,
-    accentBorder: Boolean = false,
-    onClick: () -> Unit,
-    content: @Composable () -> Unit
+    iconTint: Color,
+    rootState: RootAccessState,
+    deviceName: String,
+    uid: Int,
+    isRunning: Boolean,
+    onDismiss: () -> Unit,
+    onShowKeyboard: () -> Unit,
+    onRequestRoot: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onCopyOutput: () -> Unit,
+    onPaste: () -> Unit,
+    onClear: () -> Unit,
+    onSigint: () -> Unit,
+    onRestart: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = theme.chromeSurfaceColor,
+            contentColor = theme.chromeTextColor,
+            border = BorderStroke(1.dp, theme.chromeBorderColor),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Terminal Options",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = iconTint
+                )
+                Text(
+                    text = "$deviceName · ${rootState.label} · uid=${if (uid >= 0) uid else "—"}",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    color = theme.chromeMutedColor
+                )
+
+                HorizontalDivider(color = theme.chromeBorderColor)
+
+                BackMenuRow(
+                    icon = Icons.Filled.Keyboard,
+                    label = "Show Keyboard",
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onShowKeyboard
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.AdminPanelSettings,
+                    label = if (rootState == RootAccessState.ROOT_GRANTED) {
+                        "Root Shell Active ($deviceName:#)"
+                    } else {
+                        "Elevate to Root (su)"
+                    },
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onRequestRoot
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.Settings,
+                    label = "Terminal Settings",
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onOpenSettings
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.ContentCopy,
+                    label = "Copy Terminal Output",
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onCopyOutput
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.ContentPaste,
+                    label = "Paste from Clipboard",
+                    iconTint = iconTint,
+                    theme = theme,
+                    enabled = isRunning,
+                    onClick = onPaste
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.DeleteSweep,
+                    label = "Clear Screen",
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onClear
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.Close,
+                    label = "Send SIGINT (^C)",
+                    iconTint = iconTint,
+                    theme = theme,
+                    enabled = isRunning,
+                    onClick = onSigint
+                )
+                BackMenuRow(
+                    icon = Icons.Filled.Refresh,
+                    label = "Restart Session",
+                    iconTint = iconTint,
+                    theme = theme,
+                    onClick = onRestart
+                )
+
+                HorizontalDivider(color = theme.chromeBorderColor)
+
+                Text(
+                    text = "Back does not close the shell. Run 'exit' on sh to exit.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = theme.chromeMutedColor
+                )
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    border = BorderStroke(1.dp, theme.chromeBorderColor),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 42.dp)
+                ) {
+                    Text("Resume Terminal", fontSize = 13.sp, color = iconTint)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackMenuRow(
+    icon: ImageVector,
+    label: String,
+    iconTint: Color,
+    theme: TerminalTheme,
+    enabled: Boolean = true,
+    onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
+        enabled = enabled,
+        shape = RoundedCornerShape(8.dp),
         color = theme.chromeBgColor,
-        border = BorderStroke(
-            1.dp,
-            if (accentBorder) theme.accentColor.copy(alpha = 0.6f) else theme.chromeBorderColor
-        ),
-        modifier = Modifier.size(32.dp)
+        border = BorderStroke(1.dp, theme.chromeBorderColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            content()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) iconTint else theme.chromeMutedColor,
+                modifier = Modifier.size(19.dp)
+            )
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) theme.chromeTextColor else theme.chromeMutedColor
+            )
         }
     }
 }

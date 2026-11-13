@@ -8,6 +8,7 @@ object PtyNative {
     external fun spawnShell(
         shellPath: String,
         cwd: String,
+        deviceName: String,
         rows: Int,
         cols: Int,
         interactiveFlag: Boolean

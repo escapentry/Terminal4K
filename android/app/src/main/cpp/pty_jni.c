@@ -37,6 +37,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     jobject thiz,
     jstring jShellPath,
     jstring jCwd,
+    jstring jDeviceName,
     jint rows,
     jint cols,
     jboolean interactiveFlag
@@ -44,12 +45,14 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     (void)thiz;
     const char *shellPath = (*env)->GetStringUTFChars(env, jShellPath, NULL);
     const char *cwd = (*env)->GetStringUTFChars(env, jCwd, NULL);
+    const char *deviceName = (*env)->GetStringUTFChars(env, jDeviceName, NULL);
 
     int masterFd = posix_openpt(O_RDWR | O_NOCTTY);
     if (masterFd < 0) {
         int err = errno;
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
         jintArray errArr = (*env)->NewIntArray(env, 3);
         if (errArr != NULL) {
             jint vals[3] = { -1, -1, (jint)err };
@@ -63,6 +66,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
         jintArray errArr = (*env)->NewIntArray(env, 3);
         if (errArr != NULL) {
             jint vals[3] = { -1, -1, (jint)err };
@@ -77,6 +81,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
         jintArray errArr = (*env)->NewIntArray(env, 3);
         if (errArr != NULL) {
             jint vals[3] = { -1, -1, (jint)err };
@@ -101,6 +106,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+        (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
         jintArray errArr = (*env)->NewIntArray(env, 3);
         if (errArr != NULL) {
             jint vals[3] = { -1, -1, (jint)err };
@@ -148,21 +154,26 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
             setenv("ENV", envPath, 1);
         }
 
+        const char *dev = (deviceName != NULL && deviceName[0] != '\0') ? deviceName : "android";
         setenv("TERM", "xterm-256color", 1);
         setenv("COLORTERM", "truecolor", 1);
         setenv("LANG", "C.UTF-8", 1);
         setenv("TERMINAL_PACKAGE", "com.thallyace.terminal", 1);
+        setenv("TERMINAL_DEVICE", dev, 1);
 
+        char ps1Buf[128];
         if (interactiveFlag) {
             if (getuid() == 0) {
-                setenv("PS1", "root@com.thallyace.terminal:$PWD# ", 1);
+                snprintf(ps1Buf, sizeof(ps1Buf), "%s:# ", dev);
             } else {
-                setenv("PS1", "com.thallyace.terminal:$PWD$ ", 1);
+                snprintf(ps1Buf, sizeof(ps1Buf), "%s:$ ", dev);
             }
+            setenv("PS1", ps1Buf, 1);
             char *const args[] = { (char *)shellPath, "-i", NULL };
             execvp(shellPath, args);
         } else {
-            setenv("PS1", "root@com.thallyace.terminal:$PWD# ", 1);
+            snprintf(ps1Buf, sizeof(ps1Buf), "%s:# ", dev);
+            setenv("PS1", ps1Buf, 1);
             char *const args[] = { (char *)shellPath, NULL };
             execvp(shellPath, args);
         }
@@ -171,6 +182,7 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
 
     (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
     (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
+    (*env)->ReleaseStringUTFChars(env, jDeviceName, deviceName);
 
     jintArray result = (*env)->NewIntArray(env, 3);
     if (result == NULL) {

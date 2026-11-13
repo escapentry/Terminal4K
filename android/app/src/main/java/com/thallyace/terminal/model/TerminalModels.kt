@@ -71,7 +71,8 @@ data class SessionInfo(
     val uid: Int = -1,
     val suPath: String? = null,
     val rootState: RootAccessState = RootAccessState.CHECKING,
-    val finalShExited: Boolean = false
+    val finalShExited: Boolean = false,
+    val deviceName: String = "android"
 )
 
 data class ComputedFontMetrics(
