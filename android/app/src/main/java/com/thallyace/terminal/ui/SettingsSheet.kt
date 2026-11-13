@@ -53,6 +53,7 @@ import com.thallyace.terminal.model.ComputedFontMetrics
 import com.thallyace.terminal.model.CursorStyle
 import com.thallyace.terminal.model.ExtraKeysMode
 import com.thallyace.terminal.model.MonoTypeface
+import com.thallyace.terminal.model.RootAccessState
 import com.thallyace.terminal.model.SessionInfo
 import com.thallyace.terminal.model.SessionStatus
 import com.thallyace.terminal.model.TerminalSettings
@@ -72,6 +73,7 @@ fun SettingsSheet(
     onUpdateSettings: (TerminalSettings) -> Unit,
     onResetDefaults: () -> Unit,
     onSendSigint: () -> Unit,
+    onRequestRoot: () -> Unit,
     onRestartService: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -410,11 +412,37 @@ fun SettingsSheet(
                         },
                         theme
                     )
+                    InfoRow(
+                        "Privilege / Root",
+                        "${session.rootState.label} · uid=${if (session.uid >= 0) session.uid else "—"}",
+                        theme
+                    )
+                    InfoRow("su Binary", session.suPath ?: "Not found", theme)
                     InfoRow("Shell / PID", "${session.shellPath} · ${if (session.pid > 0) session.pid else "—"}", theme)
                     InfoRow("Grid Size", "${session.cols} × ${session.rows}", theme)
                     InfoRow("Uptime", formatUptime(session.startedAtMillis, session.endedAtMillis ?: nowMillis), theme)
 
                     Spacer(modifier = Modifier.height(4.dp))
+
+                    OutlinedButton(
+                        onClick = onRequestRoot,
+                        enabled = session.rootState != RootAccessState.ROOT_GRANTED &&
+                            session.rootState != RootAccessState.CHECKING,
+                        border = BorderStroke(1.dp, theme.chromeBorderColor),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp)
+                    ) {
+                        val rootBtnLabel = when (session.rootState) {
+                            RootAccessState.ROOT_GRANTED -> "Root shell active (uid=0)"
+                            RootAccessState.CHECKING -> "Checking su access..."
+                            RootAccessState.USER_NO_SU -> "Request Root (su) — no binary found"
+                            RootAccessState.ROOT_DENIED -> "Retry Root Elevation (su)"
+                            RootAccessState.USER_SU_AVAILABLE -> "Elevate to Root Shell (su)"
+                        }
+                        Text(rootBtnLabel, fontSize = 12.sp, color = theme.chromeTextColor)
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),

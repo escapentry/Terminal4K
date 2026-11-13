@@ -4,7 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.Configuration
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
@@ -31,7 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thallyace.terminal.model.BellMode
 import com.thallyace.terminal.model.ExtraKeysMode
+import com.thallyace.terminal.model.RootAccessState
 import com.thallyace.terminal.model.SessionStatus
 import com.thallyace.terminal.model.TerminalSettings
 import com.thallyace.terminal.model.TerminalSettingsRepository
@@ -79,6 +83,7 @@ fun TerminalScreen(
     var ctrlArmed by remember { mutableStateOf(false) }
     var altArmed by remember { mutableStateOf(false) }
     var bellFlash by remember { mutableStateOf(false) }
+    var surfaceViewRef by remember { mutableStateOf<TerminalSurfaceView?>(null) }
 
     val session by service.sessionInfo.collectAsState()
     val revision by service.bufferRevision.collectAsState()
@@ -137,6 +142,20 @@ fun TerminalScreen(
     }
 
     val shellShortName = session.shellPath.substringAfterLast('/').ifEmpty { "sh" }
+    val rootColor = when (session.rootState) {
+        RootAccessState.ROOT_GRANTED -> if (theme.isLight) Color(0xFF15803D) else Color(0xFF4ADE80)
+        RootAccessState.ROOT_DENIED -> if (theme.isLight) Color(0xFFB91C1C) else Color(0xFFF87171)
+        RootAccessState.USER_SU_AVAILABLE -> theme.accentColor
+        RootAccessState.CHECKING -> if (theme.isLight) Color(0xFFB45309) else Color(0xFFFBBF24)
+        RootAccessState.USER_NO_SU -> theme.chromeMutedColor
+    }
+    val rootBadgeText = when (session.rootState) {
+        RootAccessState.ROOT_GRANTED -> "# root"
+        RootAccessState.CHECKING -> "su..."
+        RootAccessState.USER_SU_AVAILABLE -> "$ su?"
+        RootAccessState.ROOT_DENIED -> "su denied"
+        RootAccessState.USER_NO_SU -> "$ user"
+    }
 
     Column(
         modifier = Modifier
@@ -152,7 +171,7 @@ fun TerminalScreen(
                 .fillMaxWidth()
                 .height(48.dp)
                 .background(theme.chromeSurfaceColor)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -167,33 +186,94 @@ fun TerminalScreen(
                     tint = theme.accentColor,
                     modifier = Modifier.size(18.dp)
                 )
-                Text(
-                    text = "Terminal",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.chromeTextColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val statusMeta = if (session.status == SessionStatus.EXITED) {
-                    "exited (${session.exitCode ?: 0})"
-                } else {
-                    "$shellShortName · ${session.cols}×${session.rows} · ${computedMetrics.fontSizeSp}sp"
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Terminal",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = theme.chromeTextColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = rootBadgeText,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = rootColor,
+                            maxLines = 1
+                        )
+                    }
+                    val statusMeta = if (session.status == SessionStatus.EXITED) {
+                        "exited (${session.exitCode ?: 0})"
+                    } else {
+                        "$shellShortName · ${session.cols}×${session.rows} · ${computedMetrics.fontSizeSp}sp"
+                    }
+                    Text(
+                        text = statusMeta,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = theme.chromeMutedColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(
-                    text = "· $statusMeta",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = theme.chromeMutedColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
 
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                IconButton(
+                Surface(
+                    onClick = { service.requestRootShell() },
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (session.rootState == RootAccessState.ROOT_GRANTED) {
+                        rootColor.copy(alpha = 0.16f)
+                    } else {
+                        Color.Transparent
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (session.rootState == RootAccessState.ROOT_GRANTED ||
+                            session.rootState == RootAccessState.USER_SU_AVAILABLE
+                        ) {
+                            rootColor.copy(alpha = 0.6f)
+                        } else {
+                            theme.chromeBorderColor
+                        }
+                    ),
+                    modifier = Modifier.heightIn(min = 32.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (session.rootState == RootAccessState.ROOT_GRANTED) "#" else "su",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = rootColor
+                        )
+                    }
+                }
+
+                TopBarIconAction(
+                    onClick = { surfaceViewRef?.showSoftKeyboard() }
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Keyboard,
+                        contentDescription = "Show keyboard",
+                        tint = theme.chromeTextColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                TopBarIconAction(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val text = service.buffer.dumpText()
@@ -206,11 +286,11 @@ fun TerminalScreen(
                         imageVector = Icons.Filled.ContentCopy,
                         contentDescription = "Copy output",
                         tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
-                IconButton(
+                TopBarIconAction(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         val primary = clipboard?.primaryClip
@@ -228,25 +308,29 @@ fun TerminalScreen(
                         imageVector = Icons.Filled.ContentPaste,
                         contentDescription = "Paste",
                         tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
 
-                IconButton(onClick = { service.buffer.clearAll() }) {
+                TopBarIconAction(
+                    onClick = { service.buffer.clearAll() }
+                ) {
                     Icon(
                         imageVector = Icons.Filled.DeleteSweep,
                         contentDescription = "Clear",
                         tint = theme.chromeMutedColor,
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                IconButton(onClick = { settingsOpen = true }) {
+                TopBarIconAction(
+                    onClick = { settingsOpen = true }
+                ) {
                     Icon(
                         imageVector = Icons.Filled.Settings,
                         contentDescription = "Settings",
                         tint = theme.chromeTextColor,
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -276,7 +360,8 @@ fun TerminalScreen(
                     ctrlArmed = false
                     altArmed = false
                 },
-                onRestartRequested = { service.restartSession() }
+                onRestartRequested = { service.restartSession() },
+                onSurfaceReady = { view -> surfaceViewRef = view }
             )
 
             if (bellFlash) {
@@ -366,10 +451,29 @@ fun TerminalScreen(
                 service.updateScrollbackLimit(defaults.scrollbackLines)
             },
             onSendSigint = { service.sendSigint() },
+            onRequestRoot = {
+                service.requestRootShell()
+                settingsOpen = false
+            },
             onRestartService = {
                 service.restartSession()
                 settingsOpen = false
             }
         )
+    }
+}
+
+@Composable
+private fun TopBarIconAction(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
 }

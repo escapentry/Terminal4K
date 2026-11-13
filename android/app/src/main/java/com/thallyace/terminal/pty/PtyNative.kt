@@ -5,7 +5,13 @@ object PtyNative {
         System.loadLibrary("terminal_pty")
     }
 
-    external fun spawnShell(shellPath: String, cwd: String, rows: Int, cols: Int): IntArray?
+    external fun spawnShell(
+        shellPath: String,
+        cwd: String,
+        rows: Int,
+        cols: Int,
+        interactiveFlag: Boolean
+    ): IntArray?
 
     external fun readFd(fd: Int, buffer: ByteArray): Int
 
@@ -18,4 +24,10 @@ object PtyNative {
     external fun sendSignal(pid: Int, signalNum: Int): Int
 
     external fun closeFd(fd: Int)
+
+    external fun getUid(): Int
+
+    external fun findSuPath(): String?
+
+    external fun testSuRoot(suPath: String): Int
 }

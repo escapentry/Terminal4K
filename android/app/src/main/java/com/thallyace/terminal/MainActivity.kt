@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ ->
-        startAndBindTerminalService()
+        // Service is already started and bound; no blocking required
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -55,13 +55,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Start and bind the persistent terminal service immediately without blocking on permission UI
+        startAndBindTerminalService()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            startAndBindTerminalService()
         }
 
         setContent {
@@ -99,7 +100,14 @@ class MainActivity : ComponentActivity() {
 
     private fun startAndBindTerminalService() {
         val serviceIntent = Intent(this, TerminalService::class.java)
-        ContextCompat.startForegroundService(this, serviceIntent)
+        try {
+            ContextCompat.startForegroundService(this, serviceIntent)
+        } catch (_: Exception) {
+            try {
+                startService(serviceIntent)
+            } catch (_: Exception) {
+            }
+        }
         if (!serviceBound) {
             bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
             serviceBound = true

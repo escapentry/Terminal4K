@@ -35,6 +35,14 @@ enum class SessionStatus {
     EXITED
 }
 
+enum class RootAccessState(val label: String) {
+    CHECKING("Checking"),
+    USER_NO_SU("User (no su)"),
+    USER_SU_AVAILABLE("User (su ready)"),
+    ROOT_GRANTED("Root (uid=0)"),
+    ROOT_DENIED("Root denied")
+}
+
 data class TerminalSettings(
     val autoFontSize: Boolean = true,
     val manualFontSizeSp: Float = 14.0f,
@@ -59,7 +67,10 @@ data class SessionInfo(
     val endedAtMillis: Long? = null,
     val cols: Int = 80,
     val rows: Int = 24,
-    val shellPath: String = "/system/bin/sh"
+    val shellPath: String = "/system/bin/sh",
+    val uid: Int = -1,
+    val suPath: String? = null,
+    val rootState: RootAccessState = RootAccessState.CHECKING
 )
 
 data class ComputedFontMetrics(

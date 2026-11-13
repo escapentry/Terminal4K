@@ -13,6 +13,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.thallyace.terminal.MainActivity
 import com.thallyace.terminal.R
+import com.thallyace.terminal.model.RootAccessState
 import com.thallyace.terminal.model.SessionInfo
 import com.thallyace.terminal.model.SessionStatus
 import com.thallyace.terminal.pty.PtyNative
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Executors
 
 class TerminalService : Service() {
 
@@ -49,9 +51,18 @@ class TerminalService : Service() {
     private var childPid: Int = -1
 
     @Volatile
-    private var readerThread: Thread? = null
+    private var activeSessionId: Long = 0L
 
-    private val writeLock = Any()
+    @Volatile
+    private var rootRequestInFlight: Boolean = false
+
+    private val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "com.thallyace.terminal-pty-writer").apply { isDaemon = true }
+    }
+
+    private val controlExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "com.thallyace.terminal-pty-control").apply { isDaemon = true }
+    }
 
     val buffer = TerminalBuffer(
         initialCols = 80,
@@ -67,7 +78,10 @@ class TerminalService : Service() {
         createNotificationChannel()
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder {
+        ensureShellStarted()
+        return binder
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SERVICE) {
@@ -78,23 +92,42 @@ class TerminalService : Service() {
         }
 
         promoteToForeground()
-
-        if (_sessionInfo.value.status == SessionStatus.CONNECTING) {
-            startShellSession(buffer.cols, buffer.rows)
-        }
+        ensureShellStarted()
         return START_STICKY
     }
 
-    fun startShellSession(cols: Int, rows: Int) {
+    private fun ensureShellStarted() {
+        if (_sessionInfo.value.status == SessionStatus.CONNECTING && masterFd < 0) {
+            startShellSession(buffer.cols, buffer.rows)
+        }
+    }
+
+    fun startShellSession(
+        cols: Int,
+        rows: Int,
+        shellOverride: String? = null,
+        elevatedRoot: Boolean = false
+    ) {
         synchronized(this) {
             if (_sessionInfo.value.status == SessionStatus.RUNNING && masterFd >= 0) {
                 return
             }
-            val shellPath = resolveShellPath()
+
+            val uid = PtyNative.getUid()
+            val detectedSu = PtyNative.findSuPath()
+            val shellPath = shellOverride ?: resolveShellPath()
+            val interactiveFlag = (shellOverride == null)
+            val rootState = when {
+                uid == 0 || elevatedRoot -> RootAccessState.ROOT_GRANTED
+                detectedSu != null -> RootAccessState.USER_SU_AVAILABLE
+                else -> RootAccessState.USER_NO_SU
+            }
+
             val cwd = filesDir.absolutePath
-            val spawned = PtyNative.spawnShell(shellPath, cwd, rows, cols)
+            val spawned = PtyNative.spawnShell(shellPath, cwd, rows, cols, interactiveFlag)
 
             if (spawned == null || spawned.size < 2 || spawned[0] < 0) {
+                val errNo = spawned?.getOrNull(2) ?: -1
                 _sessionInfo.value = SessionInfo(
                     pid = -1,
                     status = SessionStatus.EXITED,
@@ -103,14 +136,21 @@ class TerminalService : Service() {
                     endedAtMillis = System.currentTimeMillis(),
                     cols = cols,
                     rows = rows,
-                    shellPath = shellPath
+                    shellPath = shellPath,
+                    uid = uid,
+                    suPath = detectedSu,
+                    rootState = rootState
                 )
-                buffer.appendLocalLine("[Failed to start PTY shell ($shellPath)]")
+                buffer.appendLocalLine("[Failed to start PTY shell: $shellPath (errno=$errNo)]")
                 return
             }
 
+            activeSessionId += 1L
+            val sessionId = activeSessionId
             masterFd = spawned[0]
             childPid = spawned[1]
+            val effectiveUid = if (elevatedRoot) 0 else uid
+
             _sessionInfo.value = SessionInfo(
                 pid = childPid,
                 status = SessionStatus.RUNNING,
@@ -119,23 +159,92 @@ class TerminalService : Service() {
                 endedAtMillis = null,
                 cols = cols,
                 rows = rows,
-                shellPath = shellPath
+                shellPath = shellPath,
+                uid = effectiveUid,
+                suPath = detectedSu,
+                rootState = rootState
             )
 
+            buffer.appendLocalLine("com.thallyace.terminal · Persistent Terminal Service")
+            buffer.appendLocalLine("Shell: $shellPath (PID $childPid) · UID: $effectiveUid · ${rootState.label}")
+            when (rootState) {
+                RootAccessState.ROOT_GRANTED -> {
+                    buffer.appendLocalLine("[Root shell active (uid=0)]")
+                }
+                RootAccessState.USER_SU_AVAILABLE -> {
+                    buffer.appendLocalLine("[su binary ready: $detectedSu — tap 'su' in top bar to elevate]")
+                }
+                RootAccessState.USER_NO_SU -> {
+                    buffer.appendLocalLine("[Standard user shell — no su binary detected on device]")
+                }
+                else -> Unit
+            }
+
             promoteToForeground()
-            startReaderLoop(masterFd, childPid)
+            startReaderLoop(masterFd, childPid, sessionId)
+        }
+    }
+
+    fun requestRootShell() {
+        if (rootRequestInFlight) return
+        rootRequestInFlight = true
+        controlExecutor.execute {
+            try {
+                val current = _sessionInfo.value
+                if (current.rootState == RootAccessState.ROOT_GRANTED && current.status == SessionStatus.RUNNING) {
+                    buffer.appendLocalLine("[Root shell is already active (uid=0)]")
+                    return@execute
+                }
+
+                val suPath = PtyNative.findSuPath()
+                if (suPath == null) {
+                    _sessionInfo.update { it.copy(suPath = null, rootState = RootAccessState.USER_NO_SU) }
+                    buffer.appendLocalLine("[Root unavailable: no su binary found]")
+                    return@execute
+                }
+
+                _sessionInfo.update { it.copy(suPath = suPath, rootState = RootAccessState.CHECKING) }
+                buffer.appendLocalLine("[Requesting root shell via $suPath...]")
+
+                val rc = PtyNative.testSuRoot(suPath)
+                if (rc == 0) {
+                    synchronized(this@TerminalService) {
+                        terminateSession()
+                        _sessionInfo.value = _sessionInfo.value.copy(
+                            status = SessionStatus.CONNECTING,
+                            exitCode = null,
+                            endedAtMillis = null
+                        )
+                        startShellSession(
+                            cols = buffer.cols,
+                            rows = buffer.rows,
+                            shellOverride = suPath,
+                            elevatedRoot = true
+                        )
+                    }
+                } else {
+                    val runningAsFallback = _sessionInfo.value.status == SessionStatus.RUNNING
+                    _sessionInfo.update { it.copy(suPath = suPath, rootState = RootAccessState.ROOT_DENIED) }
+                    val suffix = if (runningAsFallback) " — staying in user shell" else ""
+                    buffer.appendLocalLine("[Root access denied by $suPath (exit $rc)$suffix]")
+                }
+            } finally {
+                rootRequestInFlight = false
+            }
         }
     }
 
     fun restartSession() {
-        terminateSession()
-        buffer.clearAll()
-        _sessionInfo.value = _sessionInfo.value.copy(
-            status = SessionStatus.CONNECTING,
-            exitCode = null,
-            endedAtMillis = null
-        )
-        startShellSession(buffer.cols, buffer.rows)
+        synchronized(this) {
+            terminateSession()
+            buffer.clearAll()
+            _sessionInfo.value = _sessionInfo.value.copy(
+                status = SessionStatus.CONNECTING,
+                exitCode = null,
+                endedAtMillis = null
+            )
+            startShellSession(buffer.cols, buffer.rows)
+        }
     }
 
     fun writeInput(text: String) {
@@ -144,16 +253,14 @@ class TerminalService : Service() {
 
     fun writeInput(bytes: ByteArray) {
         if (bytes.isEmpty()) return
-        val fd = masterFd
-        if (fd < 0 || _sessionInfo.value.status != SessionStatus.RUNNING) return
-        Thread {
-            synchronized(writeLock) {
-                val activeFd = masterFd
-                if (activeFd >= 0 && _sessionInfo.value.status == SessionStatus.RUNNING) {
-                    PtyNative.writeFd(activeFd, bytes, bytes.size)
-                }
+        if (masterFd < 0 || _sessionInfo.value.status != SessionStatus.RUNNING) return
+        val copy = bytes.copyOf()
+        writeExecutor.execute {
+            val activeFd = masterFd
+            if (activeFd >= 0 && _sessionInfo.value.status == SessionStatus.RUNNING) {
+                PtyNative.writeFd(activeFd, copy, copy.size)
             }
-        }.start()
+        }
     }
 
     fun resizeGrid(cols: Int, rows: Int) {
@@ -177,7 +284,7 @@ class TerminalService : Service() {
         buffer.setMaxScrollback(lines)
     }
 
-    private fun startReaderLoop(fd: Int, pid: Int) {
+    private fun startReaderLoop(fd: Int, pid: Int, sessionId: Long) {
         val thread = Thread({
             val readBuf = ByteArray(8192)
             while (true) {
@@ -189,33 +296,38 @@ class TerminalService : Service() {
             }
 
             PtyNative.closeFd(fd)
-            if (masterFd == fd) {
-                masterFd = -1
-            }
-
             val exitCode = PtyNative.waitForChild(pid)
-            if (childPid == pid) {
-                childPid = -1
+
+            val shouldMarkExited = synchronized(this@TerminalService) {
+                if (masterFd == fd) {
+                    masterFd = -1
+                }
+                if (childPid == pid) {
+                    childPid = -1
+                }
+                activeSessionId == sessionId && _sessionInfo.value.status == SessionStatus.RUNNING
             }
 
-            if (_sessionInfo.value.status == SessionStatus.RUNNING) {
-                _sessionInfo.value = _sessionInfo.value.copy(
-                    status = SessionStatus.EXITED,
-                    exitCode = exitCode,
-                    endedAtMillis = System.currentTimeMillis()
-                )
+            if (shouldMarkExited) {
+                _sessionInfo.update {
+                    it.copy(
+                        status = SessionStatus.EXITED,
+                        exitCode = exitCode,
+                        endedAtMillis = System.currentTimeMillis()
+                    )
+                }
                 buffer.appendLocalLine("")
                 buffer.appendLocalLine("[Process completed (code $exitCode) — press Enter to start new session]")
+                stopForegroundCompat()
+                stopSelf()
             }
-
-            stopForegroundCompat()
-            stopSelf()
-        }, "com.thallyace.terminal-pty-reader")
-        readerThread = thread
+        }, "com.thallyace.terminal-pty-reader-$sessionId")
+        thread.isDaemon = true
         thread.start()
     }
 
     private fun terminateSession() {
+        activeSessionId += 1L
         val pid = childPid
         val fd = masterFd
         if (pid > 0) {
@@ -298,10 +410,16 @@ class TerminalService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val privLabel = if (_sessionInfo.value.rootState == RootAccessState.ROOT_GRANTED) {
+            "Root shell active"
+        } else {
+            "Persistent session running"
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Persistent session running (com.thallyace.terminal)")
+            .setContentText("$privLabel (com.thallyace.terminal)")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(openPending)
@@ -311,6 +429,8 @@ class TerminalService : Service() {
 
     override fun onDestroy() {
         terminateSession()
+        writeExecutor.shutdownNow()
+        controlExecutor.shutdownNow()
         super.onDestroy()
     }
 

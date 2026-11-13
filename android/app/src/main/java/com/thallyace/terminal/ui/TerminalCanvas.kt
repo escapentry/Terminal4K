@@ -28,10 +28,10 @@ import com.thallyace.terminal.model.MonoTypeface
 import com.thallyace.terminal.model.TerminalSettings
 import com.thallyace.terminal.model.TerminalTheme
 import com.thallyace.terminal.terminal.TerminalBuffer
-import com.thallyace.terminal.terminal.TerminalCell
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class TerminalSurfaceView(context: Context) : View(context) {
@@ -52,6 +52,7 @@ class TerminalSurfaceView(context: Context) : View(context) {
     private var scrollOffsetRows = 0
     private var scrollAccumulatorPx = 0f
     private var cursorBlinkVisible = true
+    private var initialImeRequested = false
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.MONOSPACE
@@ -68,10 +69,10 @@ class TerminalSurfaceView(context: Context) : View(context) {
     private val gestureDetector = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
             override fun onSingleTapUp(e: MotionEvent): Boolean {
-                requestFocus()
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                imm?.showSoftInput(this@TerminalSurfaceView, InputMethodManager.SHOW_IMPLICIT)
+                showSoftKeyboard()
                 return true
             }
 
@@ -99,6 +100,33 @@ class TerminalSurfaceView(context: Context) : View(context) {
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+        isClickable = true
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!initialImeRequested) {
+            initialImeRequested = true
+            post { showSoftKeyboard() }
+        }
+    }
+
+    fun showSoftKeyboard() {
+        requestFocusFromTouch()
+        requestFocus()
+        post {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                ?: return@post
+            imm.restartInput(this)
+            val shown = imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            if (!shown) {
+                postDelayed({
+                    requestFocus()
+                    imm.restartInput(this)
+                    imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+                }, 120)
+            }
+        }
     }
 
     fun applyConfig(
@@ -185,31 +213,105 @@ class TerminalSurfaceView(context: Context) : View(context) {
     override fun onCheckIsTextEditor(): Boolean = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.inputType = InputType.TYPE_NULL
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_ACTION_NONE
 
         return object : BaseInputConnection(this, false) {
+            private var composingBuffer: String = ""
+
+            private fun backspaceByte(): Byte =
+                if (settings.backspaceMode == BackspaceMode.CTRL_H) 0x08.toByte() else 0x7F.toByte()
+
+            private fun sendBackspaces(count: Int) {
+                if (count <= 0) return
+                val bs = backspaceByte()
+                sendBytes(ByteArray(count) { bs })
+            }
+
+            private fun applyComposingUpdate(nextText: String, keepComposing: Boolean) {
+                val maxPrefix = min(composingBuffer.length, nextText.length)
+                var common = 0
+                while (common < maxPrefix && composingBuffer[common] == nextText[common]) {
+                    common++
+                }
+                val eraseCount = composingBuffer.length - common
+                if (eraseCount > 0) {
+                    sendBackspaces(eraseCount)
+                }
+                if (common < nextText.length) {
+                    handleCommittedText(nextText.substring(common))
+                }
+                composingBuffer = if (keepComposing) nextText else ""
+            }
+
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                applyComposingUpdate(text?.toString() ?: "", keepComposing = true)
+                return true
+            }
+
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-                if (!text.isNullOrEmpty()) {
-                    handleCommittedText(text.toString())
+                val next = text?.toString() ?: ""
+                if (composingBuffer.isNotEmpty()) {
+                    applyComposingUpdate(next, keepComposing = false)
+                } else if (next.isNotEmpty()) {
+                    handleCommittedText(next)
                 }
                 return true
             }
 
+            override fun finishComposingText(): Boolean {
+                composingBuffer = ""
+                return true
+            }
+
+            override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence {
+                if (n <= 0) return ""
+                return if (composingBuffer.isNotEmpty()) {
+                    composingBuffer.takeLast(n)
+                } else {
+                    " "
+                }
+            }
+
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
                 if (beforeLength > 0) {
-                    val bsByte = if (settings.backspaceMode == BackspaceMode.CTRL_H) 0x08.toByte() else 0x7F.toByte()
-                    val payload = ByteArray(beforeLength) { bsByte }
-                    sendBytes(payload)
+                    if (composingBuffer.isNotEmpty()) {
+                        composingBuffer = if (beforeLength >= composingBuffer.length) {
+                            ""
+                        } else {
+                            composingBuffer.dropLast(beforeLength)
+                        }
+                    }
+                    sendBackspaces(beforeLength)
                 }
+                return true
+            }
+
+            override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
+                return deleteSurroundingText(beforeLength, afterLength)
+            }
+
+            override fun performEditorAction(editorAction: Int): Boolean {
+                composingBuffer = ""
+                handleCommittedText("\r")
                 return true
             }
 
             override fun sendKeyEvent(event: KeyEvent): Boolean {
                 if (event.action == KeyEvent.ACTION_DOWN) {
-                    if (handleKeyCode(event)) return true
+                    if (handleKeyCode(event)) {
+                        composingBuffer = ""
+                        return true
+                    }
+                } else if (event.action == KeyEvent.ACTION_MULTIPLE &&
+                    event.keyCode == KeyEvent.KEYCODE_UNKNOWN
+                ) {
+                    val chars = event.characters
+                    if (!chars.isNullOrEmpty()) {
+                        composingBuffer = ""
+                        handleCommittedText(chars)
+                        return true
+                    }
                 }
                 return super.sendKeyEvent(event)
             }
@@ -221,6 +323,16 @@ class TerminalSurfaceView(context: Context) : View(context) {
             return true
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent?): Boolean {
+        val chars = event?.characters
+        if (keyCode == KeyEvent.KEYCODE_UNKNOWN && !chars.isNullOrEmpty()) {
+            handleCommittedText(chars)
+            return true
+        }
+        return super.onKeyMultiple(keyCode, repeatCount, event)
     }
 
     private fun handleKeyCode(event: KeyEvent): Boolean {
@@ -456,7 +568,8 @@ fun TerminalCanvas(
     onSendBytes: (ByteArray) -> Unit,
     onGridResize: (Int, Int) -> Unit,
     onConsumeModifiers: () -> Unit,
-    onRestartRequested: () -> Unit
+    onRestartRequested: () -> Unit,
+    onSurfaceReady: ((TerminalSurfaceView) -> Unit)? = null
 ) {
     var surfaceViewRef by remember { mutableStateOf<TerminalSurfaceView?>(null) }
 
@@ -473,7 +586,7 @@ fun TerminalCanvas(
         }
     }
 
-    LaunchedEffect(revision) {
+    LaunchedEffect(revision, surfaceViewRef) {
         surfaceViewRef?.invalidate()
     }
 
@@ -500,8 +613,8 @@ fun TerminalCanvas(
                     alt = altArmed,
                     exited = sessionExited
                 )
-                requestFocus()
                 surfaceViewRef = this
+                onSurfaceReady?.invoke(this)
             }
         },
         update = { view ->
@@ -518,6 +631,7 @@ fun TerminalCanvas(
                 alt = altArmed,
                 exited = sessionExited
             )
+            onSurfaceReady?.invoke(view)
         }
     )
 }

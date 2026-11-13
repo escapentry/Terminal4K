@@ -12,6 +12,25 @@
 #include <termios.h>
 #include <unistd.h>
 
+static int find_su_binary(char *outPath, size_t outSize) {
+    const char *candidates[] = {
+        "/system/bin/su",
+        "/system/xbin/su",
+        "/sbin/su",
+        "/su/bin/su",
+        "/vendor/bin/su",
+        "/apex/com.android.runtime/bin/su"
+    };
+    size_t count = sizeof(candidates) / sizeof(candidates[0]);
+    for (size_t i = 0; i < count; i++) {
+        if (access(candidates[i], X_OK) == 0) {
+            snprintf(outPath, outSize, "%s", candidates[i]);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 JNIEXPORT jintArray JNICALL
 Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     JNIEnv *env,
@@ -19,7 +38,8 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
     jstring jShellPath,
     jstring jCwd,
     jint rows,
-    jint cols
+    jint cols,
+    jboolean interactiveFlag
 ) {
     (void)thiz;
     const char *shellPath = (*env)->GetStringUTFChars(env, jShellPath, NULL);
@@ -27,24 +47,42 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
 
     int masterFd = posix_openpt(O_RDWR | O_NOCTTY);
     if (masterFd < 0) {
+        int err = errno;
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
-        return NULL;
+        jintArray errArr = (*env)->NewIntArray(env, 3);
+        if (errArr != NULL) {
+            jint vals[3] = { -1, -1, (jint)err };
+            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
+        }
+        return errArr;
     }
 
     if (grantpt(masterFd) != 0 || unlockpt(masterFd) != 0) {
+        int err = errno;
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
-        return NULL;
+        jintArray errArr = (*env)->NewIntArray(env, 3);
+        if (errArr != NULL) {
+            jint vals[3] = { -1, -1, (jint)err };
+            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
+        }
+        return errArr;
     }
 
     char *slaveName = ptsname(masterFd);
     if (slaveName == NULL) {
+        int err = errno;
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
-        return NULL;
+        jintArray errArr = (*env)->NewIntArray(env, 3);
+        if (errArr != NULL) {
+            jint vals[3] = { -1, -1, (jint)err };
+            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
+        }
+        return errArr;
     }
 
     char slavePath[256];
@@ -59,10 +97,16 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
 
     pid_t pid = fork();
     if (pid < 0) {
+        int err = errno;
         close(masterFd);
         (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
         (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
-        return NULL;
+        jintArray errArr = (*env)->NewIntArray(env, 3);
+        if (errArr != NULL) {
+            jint vals[3] = { -1, -1, (jint)err };
+            (*env)->SetIntArrayRegion(env, errArr, 0, 3, vals);
+        }
+        return errArr;
     }
 
     if (pid == 0) {
@@ -80,9 +124,12 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
 
         struct termios tios;
         if (tcgetattr(slaveFd, &tios) == 0) {
+            tios.c_iflag |= ICRNL;
 #ifdef IUTF8
             tios.c_iflag |= IUTF8;
 #endif
+            tios.c_oflag |= OPOST | ONLCR;
+            tios.c_lflag |= ECHO | ECHOE | ECHOK | ICANON | ISIG;
             tcsetattr(slaveFd, TCSANOW, &tios);
         }
 
@@ -102,23 +149,33 @@ Java_com_thallyace_terminal_pty_PtyNative_spawnShell(
         setenv("COLORTERM", "truecolor", 1);
         setenv("LANG", "C.UTF-8", 1);
         setenv("TERMINAL_PACKAGE", "com.thallyace.terminal", 1);
-        setenv("PS1", "com.thallyace.terminal:$PWD$ ", 1);
 
-        char *const args[] = { (char *)shellPath, "-i", NULL };
-        execvp(shellPath, args);
+        if (interactiveFlag) {
+            if (getuid() == 0) {
+                setenv("PS1", "root@com.thallyace.terminal:$PWD# ", 1);
+            } else {
+                setenv("PS1", "com.thallyace.terminal:$PWD$ ", 1);
+            }
+            char *const args[] = { (char *)shellPath, "-i", NULL };
+            execvp(shellPath, args);
+        } else {
+            setenv("PS1", "root@com.thallyace.terminal:$PWD# ", 1);
+            char *const args[] = { (char *)shellPath, NULL };
+            execvp(shellPath, args);
+        }
         _exit(127);
     }
 
     (*env)->ReleaseStringUTFChars(env, jShellPath, shellPath);
     (*env)->ReleaseStringUTFChars(env, jCwd, cwd);
 
-    jintArray result = (*env)->NewIntArray(env, 2);
+    jintArray result = (*env)->NewIntArray(env, 3);
     if (result == NULL) {
         close(masterFd);
         return NULL;
     }
-    jint values[2] = { (jint)masterFd, (jint)pid };
-    (*env)->SetIntArrayRegion(env, result, 0, 2, values);
+    jint values[3] = { (jint)masterFd, (jint)pid, 0 };
+    (*env)->SetIntArrayRegion(env, result, 0, 3, values);
     return result;
 }
 
@@ -238,4 +295,63 @@ Java_com_thallyace_terminal_pty_PtyNative_closeFd(
     if (fd >= 0) {
         close((int)fd);
     }
+}
+
+JNIEXPORT jint JNICALL
+Java_com_thallyace_terminal_pty_PtyNative_getUid(
+    JNIEnv *env,
+    jobject thiz
+) {
+    (void)env;
+    (void)thiz;
+    return (jint)getuid();
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_thallyace_terminal_pty_PtyNative_findSuPath(
+    JNIEnv *env,
+    jobject thiz
+) {
+    (void)thiz;
+    char suPath[256];
+    if (find_su_binary(suPath, sizeof(suPath))) {
+        return (*env)->NewStringUTF(env, suPath);
+    }
+    return NULL;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_thallyace_terminal_pty_PtyNative_testSuRoot(
+    JNIEnv *env,
+    jobject thiz,
+    jstring jSuPath
+) {
+    (void)thiz;
+    const char *suPath = (*env)->GetStringUTFChars(env, jSuPath, NULL);
+    pid_t pid = fork();
+    if (pid < 0) {
+        (*env)->ReleaseStringUTFChars(env, jSuPath, suPath);
+        return -1;
+    }
+    if (pid == 0) {
+        int devNull = open("/dev/null", O_RDWR);
+        if (devNull >= 0) {
+            dup2(devNull, STDIN_FILENO);
+            dup2(devNull, STDOUT_FILENO);
+            dup2(devNull, STDERR_FILENO);
+            if (devNull > 2) close(devNull);
+        }
+        char *const args[] = { (char *)suPath, "-c", "[ \"$(id -u)\" = \"0\" ]", NULL };
+        execvp(suPath, args);
+        _exit(127);
+    }
+    (*env)->ReleaseStringUTFChars(env, jSuPath, suPath);
+    int status = 0;
+    pid_t r;
+    do {
+        r = waitpid(pid, &status, 0);
+    } while (r < 0 && errno == EINTR);
+    if (r < 0) return -1;
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return -1;
 }
